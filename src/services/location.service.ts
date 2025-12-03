@@ -26,8 +26,8 @@ export class LocationService {
             this.status.set('tracking');
         }
       },
-      (err) => {
-        console.error('Geolocation error:', err);
+      (err: GeolocationPositionError) => {
+        console.error(`Geolocation error (Code: ${err.code}): ${err.message}`);
         if (err.code === err.PERMISSION_DENIED) {
           this.status.set('denied');
         } else {
