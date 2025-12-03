@@ -79,6 +79,7 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
         }
 
         this.updateStats();
+        this.saveProgress();
         this.cdr.detectChanges();
       }
     });
@@ -86,7 +87,6 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
 
   ngAfterViewInit(): void {
     this.initMap();
-    this.locationService.startWatching();
   }
 
   ngOnDestroy(): void {
@@ -106,9 +106,13 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
     }).addTo(this.map);
 
     this.fogGridLayer = L.layerGroup().addTo(this.map);
+    
+    this.loadProgress();
 
     // Update the fog grid whenever the map is panned or zoomed
     this.map.on('moveend', () => this.updateFogGrid());
+
+    this.locationService.startWatching();
   }
   
   private getTileIdForLatLng(lat: number, lng: number): string {
@@ -166,9 +170,55 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
 
 
   private updateStats(): void {
-    // Mock calculation for demo purposes
-    const newDistance = (this.pathPolyline ? this.pathPolyline.getLatLngs().length * 0.015 : 0).toFixed(2);
-    this.distance.set(parseFloat(newDistance));
+    this.distance.set(this.calculateTotalDistance());
+  }
+
+  private calculateTotalDistance(): number {
+    let totalDistance = 0;
+    if (this.exploredPath.length > 1) {
+      for (let i = 1; i < this.exploredPath.length; i++) {
+        const p1 = L.latLng(this.exploredPath[i - 1]);
+        const p2 = L.latLng(this.exploredPath[i]);
+        totalDistance += p1.distanceTo(p2); // distance in meters
+      }
+    }
+    return parseFloat((totalDistance / 1000).toFixed(2)); // convert to km
+  }
+
+  private saveProgress(): void {
+    try {
+      localStorage.setItem('strut_visitedTiles', JSON.stringify(Array.from(this.visitedTiles)));
+      localStorage.setItem('strut_exploredPath', JSON.stringify(this.exploredPath));
+    } catch (e) {
+      console.error('Error saving progress to localStorage', e);
+    }
+  }
+
+  private loadProgress(): void {
+    try {
+      const savedTiles = localStorage.getItem('strut_visitedTiles');
+      if (savedTiles) {
+        this.visitedTiles = new Set(JSON.parse(savedTiles));
+        this.discoveredTiles.set(this.visitedTiles.size);
+      }
+
+      const savedPath = localStorage.getItem('strut_exploredPath');
+      if (savedPath) {
+        this.exploredPath = JSON.parse(savedPath);
+        if (this.exploredPath.length > 0) {
+          this.pathPolyline = L.polyline(this.exploredPath, { color: '#2dd4bf', weight: 5 }).addTo(this.map);
+        }
+      }
+      
+      this.updateStats();
+      this.updateFogGrid();
+
+    } catch (e) {
+      console.error('Error loading progress from localStorage', e);
+      // Clear potentially corrupted data
+      localStorage.removeItem('strut_visitedTiles');
+      localStorage.removeItem('strut_exploredPath');
+    }
   }
 
   recenterMap(): void {
