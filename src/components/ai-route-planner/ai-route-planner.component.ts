@@ -1,5 +1,4 @@
-
-import { Component, ChangeDetectionStrategy, signal, inject, effect } from '@angular/core';
+import { Component, ChangeDetectionStrategy, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { GeminiService, RouteSuggestion } from '../../services/gemini.service';
@@ -20,6 +19,7 @@ export class AiRoutePlannerComponent {
   viewState = signal<ViewState>('idle');
   suggestion = signal<RouteSuggestion | null>(null);
   error = signal<string | null>(null);
+  loadingMessage = signal('Planning your walk...');
 
   async generateRoute() {
     if (!this.location().trim()) {
@@ -30,6 +30,7 @@ export class AiRoutePlannerComponent {
     this.viewState.set('loading');
     this.suggestion.set(null);
     this.error.set(null);
+    this.loadingMessage.set('✨ Our AI is designing your route...');
 
     try {
       const result = await this.geminiService.getRouteSuggestion(this.location(), this.duration());

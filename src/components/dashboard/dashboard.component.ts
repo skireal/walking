@@ -1,3 +1,4 @@
+
 import { Component, ChangeDetectionStrategy, signal, computed, inject, AfterViewInit, OnDestroy, effect, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { LocationService } from '../../services/location.service';
@@ -21,6 +22,7 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
 
   // Map-related properties
   private map: any;
+  private isMapInitialized = signal(false);
   private userMarker: any;
   private pathPolyline: any;
   private exploredPath: [number, number][] = [];
@@ -44,9 +46,10 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
   });
 
   constructor() {
+    // Effect for user's real-time location tracking
     effect(() => {
       const pos = this.locationService.position();
-      if (pos && this.map) {
+      if (pos && this.isMapInitialized()) {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
         const newPoint: [number, number] = [lat, lng];
@@ -113,6 +116,9 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
     this.map.on('moveend', () => this.updateFogGrid());
 
     this.locationService.startWatching();
+    
+    // Signal that the map is now ready.
+    this.isMapInitialized.set(true);
   }
   
   private getTileIdForLatLng(lat: number, lng: number): string {
@@ -127,6 +133,13 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
 
   private updateFogGrid(): void {
     if (!this.map) return;
+
+    // OPTIMIZATION: Only draw the detailed fog grid at high zoom levels
+    // to prevent performance issues when zoomed out.
+    if (this.map.getZoom() < 15) {
+      this.fogGridLayer.clearLayers(); // Clear fog when zoomed out
+      return;
+    }
 
     this.fogGridLayer.clearLayers();
     const bounds = this.map.getBounds();

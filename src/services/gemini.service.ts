@@ -1,4 +1,3 @@
-
 import { Injectable, signal } from '@angular/core';
 import { GoogleGenAI, Type } from '@google/genai';
 
@@ -18,8 +17,6 @@ export class GeminiService {
   private genAI: GoogleGenAI | null = null;
   
   constructor() {
-    // IMPORTANT: In a real app, the API key would be handled securely and not exposed.
-    // The Applet environment provides this via `process.env.API_KEY`.
     if (process.env.API_KEY) {
       this.genAI = new GoogleGenAI({ apiKey: process.env.API_KEY });
     } else {
@@ -33,7 +30,7 @@ export class GeminiService {
     }
 
     const model = 'gemini-2.5-flash';
-    const prompt = `Suggest a scenic walking route starting near ${location} that takes about ${duration} minutes for an average walker. Describe the route, mention a few points of interest, and provide simple turn-by-turn directions.`;
+    const prompt = `Suggest a scenic walking route starting near ${location} that takes about ${duration} minutes for an average walker. Describe the route, mention a few points of interest by name, and provide simple turn-by-turn directions.`;
 
     const schema = {
         type: Type.OBJECT,
@@ -44,8 +41,11 @@ export class GeminiService {
             distance: { type: Type.STRING, description: 'Estimated distance of the walk, as a string (e.g., "2.5 km").' },
             pointsOfInterest: { 
                 type: Type.ARRAY,
-                items: { type: Type.STRING },
-                description: 'An array of 2-3 key points of interest along the route.'
+                description: 'An array of 2-4 key points of interest.',
+                items: {
+                    type: Type.STRING,
+                    description: 'The name of a point of interest.'
+                }
             },
             directions: {
                 type: Type.ARRAY,
@@ -61,6 +61,7 @@ export class GeminiService {
             model: model,
             contents: prompt,
             config: {
+                systemInstruction: "You are an expert local guide. Your primary goal is to suggest creative and interesting walking routes.",
                 responseMimeType: 'application/json',
                 responseSchema: schema,
                 temperature: 0.7,
