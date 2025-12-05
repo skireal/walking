@@ -1,7 +1,8 @@
-const CACHE_NAME = 'strut-app-cache-v1';
+const CACHE_NAME = 'walker-app-cache-v1';
 const urlsToCache = [
   '/',
   '/index.html',
+  '/manifest.webmanifest',
   '/assets/icon-192.svg',
   '/assets/icon-512.svg',
   'https://cdn.tailwindcss.com',
