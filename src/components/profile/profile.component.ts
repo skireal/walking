@@ -1,6 +1,7 @@
-
-import { Component, ChangeDetectionStrategy, signal } from '@angular/core';
+import { Component, ChangeDetectionStrategy, signal, inject, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { ProgressService } from '../../services/progress.service';
+import { AchievementService } from '../../services/achievement.service';
 
 @Component({
   selector: 'app-profile',
@@ -9,20 +10,19 @@ import { CommonModule } from '@angular/common';
   imports: [CommonModule]
 })
 export class ProfileComponent {
+  private progressService = inject(ProgressService);
+  private achievementService = inject(AchievementService);
+
   userName = signal('Alex Walker');
   joinDate = signal('Joined March 2023');
 
-  stats = signal([
-    { label: 'Total Steps', value: '1.2M' },
-    { label: 'Total Distance', value: '950 km' },
-    { label: 'Walks Logged', value: '184' }
+  // Stats are now computed from the ProgressService
+  stats = computed(() => [
+    { label: 'Tiles Explored', value: this.progressService.discoveredTilesCount().toLocaleString() },
+    { label: 'Total Distance', value: `${(this.progressService.totalDistance() / 1000).toFixed(1)} km` },
+    { label: 'Walks Logged', value: 'N/A' } // Placeholder for now
   ]);
 
-  achievements = signal([
-    { name: 'First 10k Steps', icon: 'award', unlocked: true },
-    { name: '7-Day Streak', icon: 'flame', unlocked: true },
-    { name: 'Marathon Walk', icon: 'mountain', unlocked: false },
-    { name: 'Early Bird', icon: 'sunrise', unlocked: true },
-    { name: 'Night Owl', icon: 'moon', unlocked: false },
-  ]);
+  // Achievements are read directly from the AchievementService
+  achievements = this.achievementService.achievements;
 }

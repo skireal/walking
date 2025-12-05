@@ -1,7 +1,7 @@
-
 import { Component, ChangeDetectionStrategy, signal, computed, inject, AfterViewInit, OnDestroy, effect, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { LocationService } from '../../services/location.service';
+import { ProgressService } from '../../services/progress.service';
 
 // Declare Leaflet to avoid TypeScript errors, as it's loaded from a CDN.
 declare var L: any;
@@ -14,26 +14,22 @@ declare var L: any;
 })
 export class DashboardComponent implements AfterViewInit, OnDestroy {
   private locationService = inject(LocationService);
+  private progressService = inject(ProgressService);
   private cdr = inject(ChangeDetectorRef);
 
-  // Stats signals
-  distance = signal(0); // in km
-  discoveredTiles = signal(0);
-
+  // Read stats directly from the progress service
+  distance = computed(() => parseFloat((this.progressService.totalDistance() / 1000).toFixed(2)));
+  discoveredTiles = this.progressService.discoveredTilesCount;
+  
   // Map-related properties
   private map: any;
   private isMapInitialized = signal(false);
   private userMarker: any;
   private pathPolyline: any;
-  private exploredPath: [number, number][] = [];
   
   // Fog of War properties
   private fogGridLayer: any;
-  private visitedTiles = new Set<string>();
-  // Define tile size in degrees for latitude. This is an approximation but works well for local city scales.
-  // 0.0005 degrees is roughly 55 meters.
   private readonly TILE_SIZE_DEGREES_LAT = 0.0005;
-
 
   // Location status
   locationStatus = this.locationService.status;
@@ -50,6 +46,9 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
     effect(() => {
       const pos = this.locationService.position();
       if (pos && this.isMapInitialized()) {
+        // Send position to the central service to handle all logic
+        this.progressService.updatePosition(pos);
+
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
         const newPoint: [number, number] = [lat, lng];
@@ -63,28 +62,29 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
              .bindPopup('You are here!')
              .openPopup();
         }
-
-        // Update explored path
-        this.exploredPath.push(newPoint);
-        if (this.pathPolyline) {
-          this.pathPolyline.addLatLng(newPoint);
-        } else {
-          this.pathPolyline = L.polyline(this.exploredPath, { color: '#2dd4bf', weight: 5 }).addTo(this.map);
-        }
-
-        // Check if the user has entered a new tile
-        const currentTileId = this.getTileIdForLatLng(lat, lng);
-        if (!this.visitedTiles.has(currentTileId)) {
-          this.visitedTiles.add(currentTileId);
-          this.discoveredTiles.set(this.visitedTiles.size);
-          // A new tile has been discovered, update the fog
-          this.updateFogGrid();
-        }
-
-        this.updateStats();
-        this.saveProgress();
-        this.cdr.detectChanges();
       }
+    });
+
+    // Effect to update the visual path on the map
+    effect(() => {
+        const exploredPath = this.progressService.exploredPath();
+        if (this.isMapInitialized()) {
+            if (this.pathPolyline) {
+                this.pathPolyline.setLatLngs(exploredPath);
+            } else if (exploredPath.length > 0) {
+                this.pathPolyline = L.polyline(exploredPath, { color: '#2dd4bf', weight: 5 }).addTo(this.map);
+            }
+            this.cdr.detectChanges();
+        }
+    });
+    
+    // Effect to update the fog grid when tiles change or map moves
+    effect(() => {
+        // Triggered by visitedTiles changing or map movement (via map.on('moveend'))
+        this.progressService.visitedTiles(); // establish dependency
+        if (this.isMapInitialized()) {
+            this.updateFogGrid();
+        }
     });
   }
 
@@ -101,7 +101,6 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
       zoomControl: false,
     }).setView([40.7128, -74.0060], 13); // Default to NYC
 
-    // Using a lighter, more standard map theme for better contrast with the fog
     L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
       subdomains: 'abcd',
@@ -110,19 +109,22 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
 
     this.fogGridLayer = L.layerGroup().addTo(this.map);
     
-    this.loadProgress();
-
     // Update the fog grid whenever the map is panned or zoomed
     this.map.on('moveend', () => this.updateFogGrid());
 
     this.locationService.startWatching();
     
-    // Signal that the map is now ready.
     this.isMapInitialized.set(true);
+
+    // Initial draw of path and fog
+    const exploredPath = this.progressService.exploredPath();
+    if (exploredPath.length > 0) {
+        this.pathPolyline = L.polyline(exploredPath, { color: '#2dd4bf', weight: 5 }).addTo(this.map);
+    }
+    this.updateFogGrid();
   }
   
   private getTileIdForLatLng(lat: number, lng: number): string {
-    // To make the grid consistent, we calculate the longitude tile size based on the user's current latitude.
     const latRad = lat * Math.PI / 180;
     const tileSizeLng = this.TILE_SIZE_DEGREES_LAT / Math.cos(latRad);
     
@@ -133,19 +135,17 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
 
   private updateFogGrid(): void {
     if (!this.map) return;
-
-    // OPTIMIZATION: Only draw the detailed fog grid at high zoom levels
-    // to prevent performance issues when zoomed out.
+    
     if (this.map.getZoom() < 15) {
-      this.fogGridLayer.clearLayers(); // Clear fog when zoomed out
+      this.fogGridLayer.clearLayers();
       return;
     }
 
     this.fogGridLayer.clearLayers();
     const bounds = this.map.getBounds();
     const center = this.map.getCenter();
+    const visitedTiles = this.progressService.visitedTiles();
 
-    // Calculate longitude tile size based on the map's center latitude to keep the grid visually consistent across the viewport.
     const centerLatRad = center.lat * Math.PI / 180;
     const tileSizeLng = this.TILE_SIZE_DEGREES_LAT / Math.cos(centerLatRad);
 
@@ -159,81 +159,27 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
     
     for (let x = startX; x <= endX; x++) {
         for (let y = startY; y <= endY; y++) {
-            // We need to generate the ID using a representative latitude for this row of tiles to be accurate.
             const representativeLat = (y + 0.5) * this.TILE_SIZE_DEGREES_LAT;
             const tileId = this.getTileIdForLatLng(representativeLat, (x + 0.5) * tileSizeLng);
 
-            if (!this.visitedTiles.has(tileId)) {
+            if (!visitedTiles.has(tileId)) {
                 const tileBounds = [
                     [y * this.TILE_SIZE_DEGREES_LAT, x * tileSizeLng],
                     [(y + 1) * this.TILE_SIZE_DEGREES_LAT, (x + 1) * tileSizeLng]
                 ];
 
                 L.rectangle(tileBounds, {
-                    color: '#374151',      // gray-700 for subtle grid lines
+                    color: '#374151',
                     weight: 0.5,
-                    fillColor: '#111827',  // gray-900 for dark fog
+                    fillColor: '#111827',
                     fillOpacity: 0.7,
-                    interactive: false,     // Make sure fog doesn't capture clicks
+                    interactive: false,
                 }).addTo(this.fogGridLayer);
             }
         }
     }
   }
-
-
-  private updateStats(): void {
-    this.distance.set(this.calculateTotalDistance());
-  }
-
-  private calculateTotalDistance(): number {
-    let totalDistance = 0;
-    if (this.exploredPath.length > 1) {
-      for (let i = 1; i < this.exploredPath.length; i++) {
-        const p1 = L.latLng(this.exploredPath[i - 1]);
-        const p2 = L.latLng(this.exploredPath[i]);
-        totalDistance += p1.distanceTo(p2); // distance in meters
-      }
-    }
-    return parseFloat((totalDistance / 1000).toFixed(2)); // convert to km
-  }
-
-  private saveProgress(): void {
-    try {
-      localStorage.setItem('strut_visitedTiles', JSON.stringify(Array.from(this.visitedTiles)));
-      localStorage.setItem('strut_exploredPath', JSON.stringify(this.exploredPath));
-    } catch (e) {
-      console.error('Error saving progress to localStorage', e);
-    }
-  }
-
-  private loadProgress(): void {
-    try {
-      const savedTiles = localStorage.getItem('strut_visitedTiles');
-      if (savedTiles) {
-        this.visitedTiles = new Set(JSON.parse(savedTiles));
-        this.discoveredTiles.set(this.visitedTiles.size);
-      }
-
-      const savedPath = localStorage.getItem('strut_exploredPath');
-      if (savedPath) {
-        this.exploredPath = JSON.parse(savedPath);
-        if (this.exploredPath.length > 0) {
-          this.pathPolyline = L.polyline(this.exploredPath, { color: '#2dd4bf', weight: 5 }).addTo(this.map);
-        }
-      }
-      
-      this.updateStats();
-      this.updateFogGrid();
-
-    } catch (e) {
-      console.error('Error loading progress from localStorage', e);
-      // Clear potentially corrupted data
-      localStorage.removeItem('strut_visitedTiles');
-      localStorage.removeItem('strut_exploredPath');
-    }
-  }
-
+  
   recenterMap(): void {
     const pos = this.locationService.position();
     if(pos) {
