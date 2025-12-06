@@ -1,10 +1,10 @@
 const CACHE_NAME = 'walker-app-cache-v1';
 const urlsToCache = [
-  '/',
-  '/index.html',
-  '/manifest.webmanifest',
-  '/assets/icon-192.svg',
-  '/assets/icon-512.svg',
+  './',
+  './index.html',
+  './manifest.webmanifest',
+  './assets/icon-192.svg',
+  './assets/icon-512.svg',
   'https://cdn.tailwindcss.com',
   'https://rsms.me/inter/inter.css',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
