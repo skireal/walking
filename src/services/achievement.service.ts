@@ -45,6 +45,6 @@ export class AchievementService {
                 this.progressService.unlockAchievement(ach.id);
             }
         });
-    }, { allowSignalWrites: true }); // Necessary because we're updating a signal (unlocking) inside an effect
+    });
   }
 }
