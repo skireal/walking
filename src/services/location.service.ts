@@ -36,8 +36,8 @@ export class LocationService {
       },
       {
         enableHighAccuracy: true,
-        timeout: 20000, // Increased from 10s to 20s
-        maximumAge: 5000, // Allow using a cached position up to 5s old
+        timeout: 30000, // Increased from 20s to 30s
+        maximumAge: 10000, // Allow using a cached position up to 10s old
       }
     );
   }

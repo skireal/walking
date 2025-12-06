@@ -1,4 +1,4 @@
-const CACHE_NAME = 'walker-app-cache-v1';
+const CACHE_NAME = 'walker-app-cache-v2'; // Incremented cache version
 const urlsToCache = [
   './',
   './index.html',
@@ -15,27 +15,13 @@ self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
-        console.log('Opened cache');
-        // Use addAll with a catch to prevent installation failure if one CDN asset fails
+        console.log('Opened cache and caching shell assets');
         return cache.addAll(urlsToCache).catch(error => {
-            console.warn('SW cache.addAll failed for some assets:', error);
+            console.warn('SW cache.addAll failed for some initial assets:', error);
         });
       })
   );
-});
-
-self.addEventListener('fetch', event => {
-  event.respondWith(
-    caches.match(event.request)
-      .then(response => {
-        // Cache hit - return response
-        if (response) {
-          return response;
-        }
-        // Not in cache - fetch from network
-        return fetch(event.request);
-      })
-  );
+  self.skipWaiting();
 });
 
 self.addEventListener('activate', event => {
@@ -45,10 +31,50 @@ self.addEventListener('activate', event => {
       return Promise.all(
         cacheNames.map(cacheName => {
           if (cacheWhitelist.indexOf(cacheName) === -1) {
+            console.log('Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
       );
     })
+  );
+  return self.clients.claim();
+});
+
+self.addEventListener('fetch', event => {
+  // We only want to cache GET requests.
+  if (event.request.method !== 'GET' || !event.request.url.startsWith('http')) {
+    return;
+  }
+
+  // Strategy: Network falling back to cache.
+  // We also update the cache with the fresh version from the network.
+  event.respondWith(
+    fetch(event.request)
+      .then(response => {
+        // Responses must be valid to be cached.
+        // We also avoid caching the dynamic map tiles.
+        if (
+          !response || 
+          response.status !== 200 || 
+          event.request.url.includes('cartocdn.com')
+        ) {
+          return response;
+        }
+
+        const responseToCache = response.clone();
+
+        caches.open(CACHE_NAME)
+          .then(cache => {
+            cache.put(event.request, responseToCache);
+          });
+
+        return response;
+      })
+      .catch(() => {
+        // Network request failed, try to get it from the cache.
+        console.log(`Network failed for ${event.request.url}, trying cache.`);
+        return caches.match(event.request);
+      })
   );
 });
