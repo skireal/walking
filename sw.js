@@ -2,7 +2,7 @@ const CACHE_NAME = 'walker-app-cache-v2'; // Incremented cache version
 const urlsToCache = [
   './',
   './index.html',
-  './manifest.webmanifest',
+  './manifest.json',
   './assets/icon-192.svg',
   './assets/icon-512.svg',
   'https://cdn.tailwindcss.com',
