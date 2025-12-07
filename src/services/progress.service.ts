@@ -1,12 +1,33 @@
-import { Injectable, signal, effect } from '@angular/core';
-
-// Declare Leaflet to use its types without direct import
-declare var L: any;
+import { Injectable, signal, effect, computed } from '@angular/core';
 
 const TILES_KEY = 'strut_visitedTiles_v2';
 const PATH_KEY = 'strut_exploredPath_v2';
 const DISTANCE_KEY = 'strut_totalDistance_v2';
 const ACHIEVEMENTS_KEY = 'strut_unlockedAchievements_v2';
+
+/**
+ * Calculates the distance between two points on Earth using the Haversine formula.
+ * @returns The distance in meters.
+ */
+function getDistanceInMeters(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const R = 6371e3; // Earth's radius in metres
+  const φ1 = (lat1 * Math.PI) / 180; // φ, λ in radians
+  const φ2 = (lat2 * Math.PI) / 180;
+  const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+  const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+
+  const a =
+    Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+    Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c; // in metres
+}
 
 
 @Injectable({
@@ -20,10 +41,10 @@ export class ProgressService {
   unlockedAchievements = signal<Set<string>>(new Set());
 
   // Derived Signals
-  discoveredTilesCount = signal<number>(0);
+  discoveredTilesCount = computed(() => this.visitedTiles().size);
   
   // Tile size constants
-  private readonly TILE_SIZE_DEGREES_LAT = 0.0005;
+  public readonly TILE_SIZE_DEGREES_LAT = 0.0005;
 
   constructor() {
     this.loadProgress();
@@ -31,11 +52,6 @@ export class ProgressService {
     // Effect to save progress whenever it changes
     effect(() => {
       this.saveProgress();
-    });
-    
-    // Effect to keep tile count in sync
-    effect(() => {
-        this.discoveredTilesCount.set(this.visitedTiles().size);
     });
   }
 
@@ -47,9 +63,13 @@ export class ProgressService {
     // Update path and distance
     this.exploredPath.update(path => {
         if (path.length > 0) {
-            const lastPoint = L.latLng(path[path.length - 1]);
-            const newLatLng = L.latLng(newPoint);
-            const distanceIncrement = lastPoint.distanceTo(newLatLng); // in meters
+            const lastPoint = path[path.length - 1];
+            const distanceIncrement = getDistanceInMeters(
+                lastPoint[0], 
+                lastPoint[1], 
+                newPoint[0], 
+                newPoint[1]
+            );
             this.totalDistance.update(d => d + distanceIncrement);
         }
         return [...path, newPoint];
@@ -74,7 +94,7 @@ export class ProgressService {
       }
   }
 
-  private getTileIdForLatLng(lat: number, lng: number): string {
+  public getTileIdForLatLng(lat: number, lng: number): string {
     const latRad = lat * Math.PI / 180;
     const tileSizeLng = this.TILE_SIZE_DEGREES_LAT / Math.cos(latRad);
     

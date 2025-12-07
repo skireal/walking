@@ -71,8 +71,40 @@ export class GeminiService {
         const jsonString = response.text.trim();
         return JSON.parse(jsonString) as RouteSuggestion;
     } catch (error) {
-        console.error('Error calling Gemini API:', error);
+        console.error('Error calling Gemini API for route suggestion:', error);
         throw new Error('Failed to get route suggestion from AI.');
+    }
+  }
+
+  async generateImageDescription(base64ImageData: string): Promise<string> {
+    if (!this.genAI) {
+      throw new Error('Gemini AI client is not initialized. Check API Key.');
+    }
+    
+    const model = 'gemini-2.5-flash';
+    const imagePart = {
+      inlineData: {
+        mimeType: 'image/jpeg',
+        data: base64ImageData,
+      },
+    };
+    const textPart = {
+      text: 'Describe this image for a personal walking journal. Be creative and evocative. Focus on what makes this scene interesting or unique from the perspective of an urban explorer.'
+    };
+
+    try {
+      const response = await this.genAI.models.generateContent({
+        model: model,
+        contents: { parts: [imagePart, textPart] },
+        config: {
+          temperature: 0.5,
+          maxOutputTokens: 150,
+        }
+      });
+      return response.text;
+    } catch (error) {
+      console.error('Error calling Gemini API for image description:', error);
+      throw new Error('Failed to generate image description from AI.');
     }
   }
 }

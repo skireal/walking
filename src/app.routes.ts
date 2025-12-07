@@ -7,8 +7,8 @@ export const APP_ROUTES: Routes = [
     loadComponent: () => import('./components/dashboard/dashboard.component').then(m => m.DashboardComponent)
   },
   {
-    path: 'feed',
-    loadComponent: () => import('./components/feed/feed.component').then(m => m.FeedComponent)
+    path: 'log',
+    loadComponent: () => import('./components/log/log.component').then(m => m.LogComponent)
   },
   {
     path: 'planner',

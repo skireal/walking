@@ -2,6 +2,7 @@
   "name": "Walker",
   "description": "A walking tracker and social fitness app that uses AI to suggest new and exciting walking routes in your area. Track your progress, see your friends' activity, and discover your city on foot.",
   "requestFramePermissions": [
-    "geolocation"
+    "geolocation",
+    "camera"
   ]
 }
