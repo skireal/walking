@@ -2,6 +2,8 @@ import { Component, ChangeDetectionStrategy, signal, inject, computed } from '@a
 import { CommonModule } from '@angular/common';
 import { ProgressService } from '../../services/progress.service';
 import { AchievementService } from '../../services/achievement.service';
+import { AuthService } from '../../services/auth.service';
+import { Router } from '@angular/router';
 
 @Component({
   selector: 'app-profile',
@@ -12,17 +14,26 @@ import { AchievementService } from '../../services/achievement.service';
 export class ProfileComponent {
   private progressService = inject(ProgressService);
   private achievementService = inject(AchievementService);
+  private authService = inject(AuthService);
+  private router = inject(Router);
 
-  userName = signal('Alex Walker');
-  joinDate = signal('Joined March 2023');
+  currentUser = this.authService.currentUser;
+  joinDate = signal('Joined March 2023'); // This will be dynamic later
 
-  // Stats are now computed from the ProgressService
   stats = computed(() => [
     { label: 'Tiles Explored', value: this.progressService.discoveredTilesCount().toLocaleString() },
     { label: 'Total Distance', value: `${(this.progressService.totalDistance() / 1000).toFixed(1)} km` },
     { label: 'Walks Logged', value: 'N/A' } // Placeholder for now
   ]);
 
-  // Achievements are read directly from the AchievementService
   achievements = this.achievementService.achievements;
+
+  async logout(): Promise<void> {
+    try {
+      await this.authService.logout();
+      this.router.navigate(['/login']);
+    } catch (error) {
+      console.error('Failed to log out:', error);
+    }
+  }
 }
