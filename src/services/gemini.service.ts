@@ -15,7 +15,7 @@ export interface RouteSuggestion {
 })
 export class GeminiService {
   private genAI: GoogleGenAI | null = null;
-  
+
   constructor() {
     const apiKey = process.env?.['API_KEY'];
     if (apiKey) {
@@ -34,49 +34,49 @@ export class GeminiService {
     const prompt = `Suggest a scenic walking route starting near ${location} that takes about ${duration} minutes for an average walker. Describe the route, mention a few points of interest by name, and provide simple turn-by-turn directions.`;
 
     const schema = {
-        type: Type.OBJECT,
-        properties: {
-            routeName: { type: Type.STRING, description: 'A creative and descriptive name for the walking route.' },
-            description: { type: Type.STRING, description: 'A brief, engaging summary of the walk.' },
-            duration: { type: Type.STRING, description: 'Estimated duration of the walk in minutes, as a string (e.g., "30 minutes").' },
-            distance: { type: Type.STRING, description: 'Estimated distance of the walk, as a string (e.g., "2.5 km").' },
-            pointsOfInterest: { 
-                type: Type.ARRAY,
-                description: 'An array of 2-4 key points of interest.',
-                items: {
-                    type: Type.STRING,
-                    description: 'The name of a point of interest.'
-                }
-            },
-            directions: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-                description: 'A list of simple, turn-by-turn directions.'
-            }
+      type: Type.OBJECT,
+      properties: {
+        routeName: { type: Type.STRING, description: 'A creative and descriptive name for the walking route.' },
+        description: { type: Type.STRING, description: 'A brief, engaging summary of the walk.' },
+        duration: { type: Type.STRING, description: 'Estimated duration of the walk in minutes, as a string (e.g., "30 minutes").' },
+        distance: { type: Type.STRING, description: 'Estimated distance of the walk, as a string (e.g., "2.5 km").' },
+        pointsOfInterest: {
+          type: Type.ARRAY,
+          description: 'An array of 2-4 key points of interest.',
+          items: {
+            type: Type.STRING,
+            description: 'The name of a point of interest.',
+          },
         },
-        required: ['routeName', 'description', 'duration', 'distance', 'pointsOfInterest', 'directions']
+        directions: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: 'A list of simple, turn-by-turn directions.',
+        },
+      },
+      required: ['routeName', 'description', 'duration', 'distance', 'pointsOfInterest', 'directions'],
     };
 
     try {
-        const response = await this.genAI.models.generateContent({
-            model: model,
-            contents: prompt,
-            config: {
-                systemInstruction: "You are an expert local guide. Your primary goal is to suggest creative and interesting walking routes.",
-                responseMimeType: 'application/json',
-                responseSchema: schema,
-                temperature: 0.7,
-            },
-        });
+      const response = await this.genAI.models.generateContent({
+        model: model,
+        contents: prompt,
+        config: {
+          systemInstruction: 'You are an expert local guide. Your primary goal is to suggest creative and interesting walking routes.',
+          responseMimeType: 'application/json',
+          responseSchema: schema,
+          temperature: 0.7,
+        },
+      });
 
-        const text = response.text?.trim();
-        if (!text) {
-          throw new Error('Empty response from Gemini API.');
-        }
-        return JSON.parse(text) as RouteSuggestion;
+      const text = response.text?.trim();
+      if (!text) {
+        throw new Error('Empty response from Gemini API.');
+      }
+      return JSON.parse(text) as RouteSuggestion;
     } catch (error) {
-        console.error('Error calling Gemini API for route suggestion:', error);
-        throw new Error('Failed to get route suggestion from AI.');
+      console.error('Error calling Gemini API for route suggestion:', error);
+      throw new Error('Failed to get route suggestion from AI.');
     }
   }
 
@@ -84,7 +84,7 @@ export class GeminiService {
     if (!this.genAI) {
       throw new Error('Gemini AI client is not initialized. Check API Key.');
     }
-    
+
     const model = 'gemini-2.5-flash';
     const imagePart = {
       inlineData: {
@@ -93,7 +93,7 @@ export class GeminiService {
       },
     };
     const textPart = {
-      text: 'Describe this image for a personal walking journal. Be creative and evocative. Focus on what makes this scene interesting or unique from the perspective of an urban explorer.'
+      text: 'Describe this image for a personal walking journal. Be creative and evocative. Focus on what makes this scene interesting or unique from the perspective of an urban explorer.',
     };
 
     try {
@@ -103,9 +103,13 @@ export class GeminiService {
         config: {
           temperature: 0.5,
           maxOutputTokens: 150,
-        }
+        },
       });
-      return response.text;
+      const text = response.text?.trim();
+      if (!text) {
+        throw new Error('Empty response from Gemini API.');
+      }
+      return text;
     } catch (error) {
       console.error('Error calling Gemini API for image description:', error);
       throw new Error('Failed to generate image description from AI.');

@@ -9,7 +9,7 @@ export class LocationService {
   position = signal<GeolocationPosition | null>(null);
   status = signal<LocationStatus>('idle');
   private watchId: number | null = null;
-  private accuracyThreshold = 50; // ✅ Минимальная точность: 50 метров
+  private accuracyThreshold = 200; // ✅ Минимальная точность: 50 метров
 
   constructor() {
     // ✅ Следим за точностью позиции
@@ -54,9 +54,9 @@ export class LocationService {
         // ✅ Продолжаем с watchPosition даже если getCurrentPosition не сработал
       },
       {
-        enableHighAccuracy: true,  // ✅ Требуем высокую точность
-        timeout: 10000,            // 10 секунд на первую позицию
-        maximumAge: 0,             // Не используем кеш
+        enableHighAccuracy: true, // ✅ Требуем высокую точность
+        timeout: 10000, // 10 секунд на первую позицию
+        maximumAge: 0, // Не используем кеш
       }
     );
 
@@ -65,7 +65,7 @@ export class LocationService {
       (pos) => {
         console.log(
           `📍 Position update - Accuracy: ${Math.round(pos.coords.accuracy)}m, ` +
-          `Lat: ${pos.coords.latitude.toFixed(6)}, Lng: ${pos.coords.longitude.toFixed(6)}`
+            `Lat: ${pos.coords.latitude.toFixed(6)}, Lng: ${pos.coords.longitude.toFixed(6)}`
         );
 
         this.position.set(pos);
@@ -87,9 +87,9 @@ export class LocationService {
         this.handleLocationError(err);
       },
       {
-        enableHighAccuracy: true,   // ✅ Требуем GPS
-        timeout: 30000,             // 30 секунд для каждого обновления
-        maximumAge: 5000,           // Можем использовать позицию до 5 сек старую
+        enableHighAccuracy: true, // ✅ Требуем GPS
+        timeout: 30000, // 30 секунд для каждого обновления
+        maximumAge: 5000, // Можем использовать позицию до 5 сек старую
       }
     );
   }
