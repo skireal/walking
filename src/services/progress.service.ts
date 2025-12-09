@@ -1,41 +1,91 @@
-import { Injectable, signal, effect } from '@angular/core';
+import { Injectable, signal, computed, inject, effect, untracked } from '@angular/core';
+import { AuthService } from './auth.service';
+import { getFirestore, doc, setDoc, onSnapshot, Firestore, Unsubscribe } from 'firebase/firestore';
 
-// Declare Leaflet to use its types without direct import
 declare var L: any;
 
-const TILES_KEY = 'strut_visitedTiles_v2';
-const PATH_KEY = 'strut_exploredPath_v2';
-const DISTANCE_KEY = 'strut_totalDistance_v2';
-const ACHIEVEMENTS_KEY = 'strut_unlockedAchievements_v2';
+const STORAGE_KEY = 'walker_progress_data';
 
+interface ProgressData {
+  totalDistance: number;
+  visitedTiles: string[];
+  exploredPath: string;  // ← Сохраняем как одну строку
+  unlockedAchievements: string[];
+}
 
 @Injectable({
   providedIn: 'root',
 })
 export class ProgressService {
-  // State Signals
-  totalDistance = signal<number>(0); // in meters
+  totalDistance = signal<number>(0);
   visitedTiles = signal<Set<string>>(new Set());
   exploredPath = signal<[number, number][]>([]);
   unlockedAchievements = signal<Set<string>>(new Set());
 
-  // Derived Signals
-  discoveredTilesCount = signal<number>(0);
-  
-  // Tile size constants
-  private readonly TILE_SIZE_DEGREES_LAT = 0.0005;
+  discoveredTilesCount = computed(() => this.visitedTiles().size);
+
+  public readonly TILE_SIZE_DEGREES_LAT = 0.0005;
+
+  private authService = inject(AuthService);
+  private db: Firestore | null = null;
+  private progressUnsubscribe: Unsubscribe | null = null;
+  private isSyncing = signal(false);
+  private saveTimeout: any = null;
 
   constructor() {
-    this.loadProgress();
+    effect(() => {
+      const user = this.authService.currentUser();
+      const isFirebaseReady = this.authService.isFirebaseReady();
 
-    // Effect to save progress whenever it changes
-    effect(() => {
-      this.saveProgress();
-    });
-    
-    // Effect to keep tile count in sync
-    effect(() => {
-        this.discoveredTilesCount.set(this.visitedTiles().size);
+      if (!isFirebaseReady) {
+        return;
+      }
+
+      if (this.db === null) {
+        try {
+          this.db = getFirestore();
+        } catch (e) {
+          console.error("Failed to initialize Firestore", e);
+          return;
+        }
+      }
+
+      if (this.progressUnsubscribe) {
+        this.progressUnsubscribe();
+        this.progressUnsubscribe = null;
+      }
+
+      if (user) {
+        // User is logged in
+        this.resetProgress(true);
+
+        const progressDocRef = doc(this.db, 'users', user.uid, 'progress', 'main');
+        this.progressUnsubscribe = onSnapshot(progressDocRef, (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data() as ProgressData;
+            untracked(() => {
+              this.totalDistance.set(data.totalDistance || 0);
+              this.visitedTiles.set(new Set(data.visitedTiles || []));
+              
+              // ✅ Десериализуем путь из строки
+              const pathString = data.exploredPath || '[]';
+              try {
+                this.exploredPath.set(JSON.parse(pathString));
+              } catch {
+                this.exploredPath.set([]);
+              }
+              
+              this.unlockedAchievements.set(new Set(data.unlockedAchievements || []));
+            });
+          }
+        }, (error) => {
+          console.error("Error listening to progress document:", error);
+        });
+      } else {
+        // User is logged out
+        this.resetProgress(false);
+        this.loadFromLocalStorage();
+      }
     });
   }
 
@@ -43,78 +93,136 @@ export class ProgressService {
     const lat = pos.coords.latitude;
     const lng = pos.coords.longitude;
     const newPoint: [number, number] = [lat, lng];
-    
-    // Update path and distance
+
     this.exploredPath.update(path => {
-        if (path.length > 0) {
-            const lastPoint = L.latLng(path[path.length - 1]);
-            const newLatLng = L.latLng(newPoint);
-            const distanceIncrement = lastPoint.distanceTo(newLatLng); // in meters
-            this.totalDistance.update(d => d + distanceIncrement);
-        }
-        return [...path, newPoint];
+      if (path.length > 0) {
+        const lastPoint = L.latLng(path[path.length - 1]);
+        const newLatLng = L.latLng(newPoint);
+        const distanceIncrement = lastPoint.distanceTo(newLatLng);
+        this.totalDistance.update(d => d + distanceIncrement);
+      }
+      return [...path, newPoint];
     });
 
-    // Check for new tile discovery
     const currentTileId = this.getTileIdForLatLng(lat, lng);
     if (!this.visitedTiles().has(currentTileId)) {
-        this.visitedTiles.update(tiles => {
-            tiles.add(currentTileId);
-            return new Set(tiles);
-        });
+      this.visitedTiles.update(tiles => {
+        tiles.add(currentTileId);
+        return new Set(tiles);
+      });
     }
-  }
-  
-  unlockAchievement(achievementId: string) {
-      if (!this.unlockedAchievements().has(achievementId)) {
-          this.unlockedAchievements.update(achievements => {
-              achievements.add(achievementId);
-              return new Set(achievements);
-          });
-      }
+
+    this.saveProgress();
   }
 
-  private getTileIdForLatLng(lat: number, lng: number): string {
+  unlockAchievement(achievementId: string): void {
+    if (!this.unlockedAchievements().has(achievementId)) {
+      this.unlockedAchievements.update(achievements => {
+        achievements.add(achievementId);
+        return new Set(achievements);
+      });
+      this.saveProgress();
+    }
+  }
+
+  public getTileLngSizeAtLat(lat: number): number {
     const latRad = lat * Math.PI / 180;
-    const tileSizeLng = this.TILE_SIZE_DEGREES_LAT / Math.cos(latRad);
-    
-    const tileX = Math.floor(lng / tileSizeLng);
+    if (Math.abs(lat) >= 85) {
+      return this.TILE_SIZE_DEGREES_LAT / Math.cos(85 * Math.PI / 180);
+    }
+    return this.TILE_SIZE_DEGREES_LAT / Math.cos(latRad);
+  }
+
+  public getTileIdForLatLng(lat: number, lng: number): string {
     const tileY = Math.floor(lat / this.TILE_SIZE_DEGREES_LAT);
+    const representativeLat = (tileY + 0.5) * this.TILE_SIZE_DEGREES_LAT;
+    const tileSizeLng = this.getTileLngSizeAtLat(representativeLat);
+    const tileX = Math.floor(lng / tileSizeLng);
     return `${tileX},${tileY}`;
   }
 
-  private loadProgress(): void {
+  private loadFromLocalStorage(): void {
     try {
-      const savedTiles = localStorage.getItem(TILES_KEY);
-      if (savedTiles) this.visitedTiles.set(new Set(JSON.parse(savedTiles)));
-
-      const savedPath = localStorage.getItem(PATH_KEY);
-      if (savedPath) this.exploredPath.set(JSON.parse(savedPath));
-
-      const savedDistance = localStorage.getItem(DISTANCE_KEY);
-      if (savedDistance) this.totalDistance.set(parseFloat(savedDistance));
-      
-      const savedAchievements = localStorage.getItem(ACHIEVEMENTS_KEY);
-      if (savedAchievements) this.unlockedAchievements.set(new Set(JSON.parse(savedAchievements)));
-
+      const savedData = localStorage.getItem(STORAGE_KEY);
+      if (savedData) {
+        const data = JSON.parse(savedData);
+        this.totalDistance.set(data.totalDistance || 0);
+        this.visitedTiles.set(new Set(data.visitedTiles || []));
+        this.exploredPath.set(data.exploredPath || []);
+        this.unlockedAchievements.set(new Set(data.unlockedAchievements || []));
+      }
     } catch (e) {
       console.error('Error loading progress from localStorage', e);
-      // Clear potentially corrupted data
-      localStorage.removeItem(TILES_KEY);
-      localStorage.removeItem(PATH_KEY);
-      localStorage.removeItem(DISTANCE_KEY);
-      localStorage.removeItem(ACHIEVEMENTS_KEY);
+    }
+  }
+
+  private saveToLocalStorage(): void {
+    try {
+      const data = {
+        totalDistance: this.totalDistance(),
+        visitedTiles: Array.from(this.visitedTiles()),
+        exploredPath: this.exploredPath(),  // Оставляем как массив для локального хранения
+        unlockedAchievements: Array.from(this.unlockedAchievements()),
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch (e) {
+      console.error('Error saving progress to localStorage', e);
+    }
+  }
+
+  public resetProgress(clearStorage: boolean = true): void {
+    this.totalDistance.set(0);
+    this.visitedTiles.set(new Set());
+    this.exploredPath.set([]);
+    this.unlockedAchievements.set(new Set());
+    if (clearStorage) {
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch (e) {
+        console.error('Error clearing progress from localStorage', e);
+      }
     }
   }
 
   private saveProgress(): void {
-    try {
-      localStorage.setItem(TILES_KEY, JSON.stringify(Array.from(this.visitedTiles())));
-      localStorage.setItem(PATH_KEY, JSON.stringify(this.exploredPath()));
-      localStorage.setItem(DISTANCE_KEY, this.totalDistance().toString());
-      localStorage.setItem(ACHIEVEMENTS_KEY, JSON.stringify(Array.from(this.unlockedAchievements())));
-    } catch (e) {
-      console.error('Error saving progress to localStorage', e);
+    this.isSyncing.set(true);
+
+    if (this.saveTimeout) {
+      clearTimeout(this.saveTimeout);
     }
+
+    this.saveTimeout = setTimeout(() => {
+      if (this.authService.isLoggedIn()) {
+        this.saveToFirestore().finally(() => this.isSyncing.set(false));
+      } else {
+        this.saveToLocalStorage();
+        this.isSyncing.set(false);
+      }
+      this.saveTimeout = null;
+    }, 2000);
+  }
+
+  private async saveToFirestore(): Promise<void> {
+    const user = this.authService.currentUser();
+    if (!user || !this.db) {
+      return;
+    }
+
+    try {
+      const data: ProgressData = {
+        totalDistance: this.totalDistance(),
+        visitedTiles: Array.from(this.visitedTiles()),
+        exploredPath: JSON.stringify(this.exploredPath()),  // ✅ Сериализуем в строку
+        unlockedAchievements: Array.from(this.unlockedAchievements()),
+      };
+      const progressDocRef = doc(this.db, 'users', user.uid, 'progress', 'main');
+      await setDoc(progressDocRef, data, { merge: true });
+    } catch (e) {
+      console.error('Error saving progress to Firestore', e);
+    }
+  }
+
+  isSyncingNow(): boolean {
+    return this.isSyncing();
   }
 }

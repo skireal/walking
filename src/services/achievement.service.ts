@@ -1,4 +1,5 @@
-import { Injectable, signal, computed, inject, effect } from '@angular/core';
+
+import { Injectable, signal, computed, inject, effect, untracked } from '@angular/core';
 import { ProgressService } from './progress.service';
 
 export interface Achievement {
@@ -39,7 +40,9 @@ export class AchievementService {
     effect(() => {
         // This effect runs when any signal read inside it changes.
         // We read signals from ProgressService via the condition function.
-        const unlockedIds = this.progressService.unlockedAchievements();
+        // Use `untracked` to prevent a dependency cycle: the effect should not
+        // re-run just because we unlocked an achievement inside it.
+        const unlockedIds = untracked(this.progressService.unlockedAchievements);
         this.allAchievements().forEach(ach => {
             if (!unlockedIds.has(ach.id) && ach.condition(this.progressService)) {
                 this.progressService.unlockAchievement(ach.id);

@@ -1,7 +1,15 @@
 
-<div class="h-screen w-screen flex flex-col">
-  <main class="flex-1 overflow-y-auto pb-20">
-    <router-outlet></router-outlet>
-  </main>
-  <app-bottom-nav></app-bottom-nav>
-</div>
+@if (isLoggedIn()) {
+  <div class="h-screen w-screen flex flex-col">
+    <main class="flex-1 overflow-y-auto pb-20">
+      <router-outlet></router-outlet>
+    </main>
+    <app-bottom-nav></app-bottom-nav>
+  </div>
+} @else {
+  <div class="h-screen w-screen flex flex-col">
+    <main class="flex-1 overflow-y-auto">
+      <router-outlet></router-outlet>
+    </main>
+  </div>
+}

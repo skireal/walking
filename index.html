@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <title>Walker App</title>
+  <base href="/" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="icon" type="image/x-icon" href="favicon.ico" />
 
@@ -17,6 +18,23 @@
   <!-- LeafletJS for maps -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+  <!-- Firebase SDK -->
+  <script type="module">
+ 
+    const firebaseConfig = {
+      apiKey: "AIzaSyAj-nE6NFc6Sy8ONsYKIRn4mH8SZ3ikq8Y",
+  authDomain: "walker-app-b81ca.firebaseapp.com",
+  projectId: "walker-app-b81ca",
+  storageBucket: "walker-app-b81ca.firebasestorage.app",
+  messagingSenderId: "442016785630",
+  appId: "1:442016785630:web:6e717192bcd77204904e4f",
+  measurementId: "G-HG8EFDP2R0"
+    };
+
+
+    window.firebaseConfig = firebaseConfig;
+  </script>
 
   <style>
     :root { font-family: 'Inter', sans-serif; }
@@ -45,13 +63,15 @@
     "@angular/common/http": "https://next.esm.sh/@angular/common@^21.0.2/http?external=rxjs",
     "@angular/forms": "https://next.esm.sh/@angular/forms@^21.0.2?external=rxjs",
     "@angular/core": "https://next.esm.sh/@angular/core@^21.0.2?external=rxjs",
-    "@angular/router": "https://next.esm.sh/@angular/router@^21.0.2?external=rxjs"
+    "@angular/router": "https://next.esm.sh/@angular/router@^21.0.2?external=rxjs",
+    "firebase/app": "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js",
+    "firebase/auth": "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js",
+    "firebase/firestore": "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js"
   }
 }
 </script>
 </head>
 <body class="bg-gray-900 text-gray-100 antialiased">
   <app-root></app-root>
-  <script type="module" src="index.js"></script>
 </body>
 </html>

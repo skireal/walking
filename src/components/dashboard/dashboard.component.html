@@ -24,6 +24,10 @@
                  <div class="w-3 h-3 bg-yellow-500 rounded-full" title="Location error"></div>
                  <span class="text-sm text-gray-300">Error</span>
               }
+              @case ('initializing') {
+                 <div class="w-3 h-3 bg-blue-500 rounded-full animate-spin" title="Initializing..."></div>
+                 <span class="text-sm text-gray-300">Loading...</span>
+              }
               @default {
                  <div class="w-3 h-3 bg-gray-500 rounded-full" title="Initializing..."></div>
                  <span class="text-sm text-gray-300">Init...</span>

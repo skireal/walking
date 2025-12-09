@@ -12,7 +12,7 @@ import { CommonModule } from '@angular/common';
 export class BottomNavComponent {
   navItems = [
     { path: '/dashboard', icon: 'home', label: 'Home' },
-    { path: '/feed', icon: 'users', label: 'Feed' },
+    { path: '/log', icon: 'journal', label: 'Log' },
     { path: '/planner', icon: 'sparkles', label: 'AI Plan' },
     { path: '/profile', icon: 'user', label: 'Profile' }
   ];
