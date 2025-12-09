@@ -17,8 +17,9 @@ export class GeminiService {
   private genAI: GoogleGenAI | null = null;
   
   constructor() {
-    if (process.env.API_KEY) {
-      this.genAI = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const apiKey = process.env?.['API_KEY'];
+    if (apiKey) {
+      this.genAI = new GoogleGenAI({ apiKey });
     } else {
       console.error('API_KEY environment variable not found.');
     }
@@ -68,8 +69,11 @@ export class GeminiService {
             },
         });
 
-        const jsonString = response.text.trim();
-        return JSON.parse(jsonString) as RouteSuggestion;
+        const text = response.text?.trim();
+        if (!text) {
+          throw new Error('Empty response from Gemini API.');
+        }
+        return JSON.parse(text) as RouteSuggestion;
     } catch (error) {
         console.error('Error calling Gemini API:', error);
         throw new Error('Failed to get route suggestion from AI.');
