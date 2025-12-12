@@ -1,5 +1,3 @@
-
-
 import { Injectable, signal, computed, inject, effect } from '@angular/core';
 import { initializeApp, getApp, getApps, type FirebaseApp } from 'firebase/app';
 import {
@@ -11,14 +9,10 @@ import {
   signInWithEmailAndPassword,
   signOut,
   setPersistence,
-  browserLocalPersistence
+  browserLocalPersistence,
 } from 'firebase/auth';
 
-declare global {
-  interface Window {
-    firebaseConfig: any;
-  }
-}
+import { firebaseConfig } from '../env';
 
 @Injectable({
   providedIn: 'root',
@@ -29,7 +23,7 @@ export class AuthService {
 
   public currentUser = signal<User | null>(null);
   public isLoggedIn = computed(() => !!this.currentUser());
-  
+
   public authStateChanged = signal<{ user: User | null; isLoggedIn: boolean }>({
     user: null,
     isLoggedIn: false,
@@ -43,22 +37,21 @@ export class AuthService {
 
   private initializeFirebase(): void {
     try {
-      if (!window.firebaseConfig || !window.firebaseConfig.apiKey) {
-        console.warn('Firebase config not found. App running in offline mode.');
+      if (!firebaseConfig || !firebaseConfig.apiKey) {
+        console.warn('Firebase config not found (env vars missing). App running in offline mode.');
         return;
       }
 
       if (getApps().length === 0) {
-        this.app = initializeApp(window.firebaseConfig);
+        this.app = initializeApp(firebaseConfig as any);
       } else {
         this.app = getApp();
       }
 
       this.auth = getAuth(this.app);
-      
+
       this.setupAuthStateObserver();
       this.isFirebaseReadySignal.set(true);
-
     } catch (error) {
       console.error('Firebase initialization error:', error);
       this.isFirebaseReadySignal.set(false);
@@ -70,7 +63,7 @@ export class AuthService {
 
     try {
       await setPersistence(this.auth, browserLocalPersistence);
-    } catch(error) {
+    } catch (error) {
       console.error('Failed to set auth persistence:', error);
     }
 
@@ -80,7 +73,7 @@ export class AuthService {
       } else {
         this.currentUser.set(null);
       }
-      
+
       this.authStateChanged.set({ user, isLoggedIn: !!user });
     });
   }
@@ -101,7 +94,7 @@ export class AuthService {
     if (!this.auth) throw new Error('Auth service not initialized.');
     await signOut(this.auth);
   }
-  
+
   public isFirebaseReady(): boolean {
     return this.isFirebaseReadySignal();
   }

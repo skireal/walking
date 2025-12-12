@@ -24,20 +24,7 @@
     />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
-    <!-- Firebase SDK -->
-    <script type="module">
-      const firebaseConfig = {
-        apiKey: 'AIzaSyAj-nE6NFc6Sy8ONsYKIRn4mH8SZ3ikq8Y',
-        authDomain: 'walker-app-b81ca.firebaseapp.com',
-        projectId: 'walker-app-b81ca',
-        storageBucket: 'walker-app-b81ca.firebasestorage.app',
-        messagingSenderId: '442016785630',
-        appId: '1:442016785630:web:6e717192bcd77204904e4f',
-        measurementId: 'G-HG8EFDP2R0',
-      };
-
-      window.firebaseConfig = firebaseConfig;
-    </script>
+    <!-- Firebase config перенесён в TypeScript (env), чтобы не светить ключ в HTML -->
 
     <style>
       :root {

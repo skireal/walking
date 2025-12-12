@@ -1,5 +1,6 @@
 import { Injectable, signal } from '@angular/core';
 import { GoogleGenAI, Type } from '@google/genai';
+import { GEMINI_API_KEY } from '../env';
 
 export interface RouteSuggestion {
   routeName: string;
@@ -17,11 +18,12 @@ export class GeminiService {
   private genAI: GoogleGenAI | null = null;
 
   constructor() {
-    const apiKey = process.env?.['API_KEY'];
+    // Ключ берём из центрального env-файла (не из process.env, чтобы не падать в браузере)
+    const apiKey = GEMINI_API_KEY;
     if (apiKey) {
       this.genAI = new GoogleGenAI({ apiKey });
     } else {
-      console.error('API_KEY environment variable not found.');
+      console.error('GEMINI_API_KEY is empty. Configure it in src/env.ts (локально, без коммита).');
     }
   }
 

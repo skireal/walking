@@ -16,3 +16,4 @@ declare module '@angular/core/primitives/di' {
   export type InjectionToken<T = any> = any;
   export type NotFound = any;
 }
+
