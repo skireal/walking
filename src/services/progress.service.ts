@@ -5,6 +5,7 @@ import { getFirestore, doc, setDoc, onSnapshot, Firestore, Unsubscribe } from 'f
 declare var L: any;
 
 const STORAGE_KEY = 'walker_progress_data';
+const MIN_DISTANCE_THRESHOLD_METERS = 3; // Minimum distance in meters to record a new point
 
 interface ProgressData {
   totalDistance: number;
@@ -97,25 +98,36 @@ export class ProgressService {
     const lat = pos.coords.latitude;
     const lng = pos.coords.longitude;
     const newPoint: [number, number] = [lat, lng];
+    const path = this.exploredPath();
+    let distanceIncrement = 0;
 
-    this.exploredPath.update((path) => {
-      if (path.length > 0) {
-        const lastPoint = L.latLng(path[path.length - 1]);
-        const newLatLng = L.latLng(newPoint);
-        const distanceIncrement = lastPoint.distanceTo(newLatLng);
-        this.totalDistance.update((d) => d + distanceIncrement);
+    // If there's a previous point, check the distance
+    if (path.length > 0) {
+      const lastPoint = L.latLng(path[path.length - 1]);
+      const newLatLng = L.latLng(newPoint);
+      distanceIncrement = lastPoint.distanceTo(newLatLng);
+
+      // If movement is insignificant, do nothing.
+      if (distanceIncrement < MIN_DISTANCE_THRESHOLD_METERS) {
+        return;
       }
-      return [...path, newPoint];
-    });
+    }
 
+    // Movement is significant (or it's the first point)
+    this.totalDistance.update((d) => d + distanceIncrement);
+    this.exploredPath.update((p) => [...p, newPoint]);
+
+    // Update the discovered tile if it's a new one
     const currentTileId = this.getTileIdForLatLng(lat, lng);
     if (!this.visitedTiles().has(currentTileId)) {
       this.visitedTiles.update((tiles) => {
-        tiles.add(currentTileId);
-        return new Set(tiles);
+        const newTiles = new Set(tiles);
+        newTiles.add(currentTileId);
+        return newTiles;
       });
     }
 
+    // Save progress (this is debounced)
     this.saveProgress();
   }
 
