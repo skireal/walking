@@ -9,7 +9,7 @@ const STORAGE_KEY = 'walker_progress_data';
 interface ProgressData {
   totalDistance: number;
   visitedTiles: string[];
-  exploredPath: string;  // ← Сохраняем как одну строку
+  exploredPath: string; // ← Сохраняем как одну строку
   unlockedAchievements: string[];
 }
 
@@ -45,7 +45,7 @@ export class ProgressService {
         try {
           this.db = getFirestore();
         } catch (e) {
-          console.error("Failed to initialize Firestore", e);
+          console.error('Failed to initialize Firestore', e);
           return;
         }
       }
@@ -60,27 +60,31 @@ export class ProgressService {
         this.resetProgress(true);
 
         const progressDocRef = doc(this.db, 'users', user.uid, 'progress', 'main');
-        this.progressUnsubscribe = onSnapshot(progressDocRef, (docSnap) => {
-          if (docSnap.exists()) {
-            const data = docSnap.data() as ProgressData;
-            untracked(() => {
-              this.totalDistance.set(data.totalDistance || 0);
-              this.visitedTiles.set(new Set(data.visitedTiles || []));
-              
-              // ✅ Десериализуем путь из строки
-              const pathString = data.exploredPath || '[]';
-              try {
-                this.exploredPath.set(JSON.parse(pathString));
-              } catch {
-                this.exploredPath.set([]);
-              }
-              
-              this.unlockedAchievements.set(new Set(data.unlockedAchievements || []));
-            });
+        this.progressUnsubscribe = onSnapshot(
+          progressDocRef,
+          (docSnap) => {
+            if (docSnap.exists()) {
+              const data = docSnap.data() as ProgressData;
+              untracked(() => {
+                this.totalDistance.set(data.totalDistance || 0);
+                this.visitedTiles.set(new Set(data.visitedTiles || []));
+
+                // ✅ Десериализуем путь из строки
+                const pathString = data.exploredPath || '[]';
+                try {
+                  this.exploredPath.set(JSON.parse(pathString));
+                } catch {
+                  this.exploredPath.set([]);
+                }
+
+                this.unlockedAchievements.set(new Set(data.unlockedAchievements || []));
+              });
+            }
+          },
+          (error) => {
+            console.error('Error listening to progress document:', error);
           }
-        }, (error) => {
-          console.error("Error listening to progress document:", error);
-        });
+        );
       } else {
         // User is logged out
         this.resetProgress(false);
@@ -94,19 +98,19 @@ export class ProgressService {
     const lng = pos.coords.longitude;
     const newPoint: [number, number] = [lat, lng];
 
-    this.exploredPath.update(path => {
+    this.exploredPath.update((path) => {
       if (path.length > 0) {
         const lastPoint = L.latLng(path[path.length - 1]);
         const newLatLng = L.latLng(newPoint);
         const distanceIncrement = lastPoint.distanceTo(newLatLng);
-        this.totalDistance.update(d => d + distanceIncrement);
+        this.totalDistance.update((d) => d + distanceIncrement);
       }
       return [...path, newPoint];
     });
 
     const currentTileId = this.getTileIdForLatLng(lat, lng);
     if (!this.visitedTiles().has(currentTileId)) {
-      this.visitedTiles.update(tiles => {
+      this.visitedTiles.update((tiles) => {
         tiles.add(currentTileId);
         return new Set(tiles);
       });
@@ -117,7 +121,7 @@ export class ProgressService {
 
   unlockAchievement(achievementId: string): void {
     if (!this.unlockedAchievements().has(achievementId)) {
-      this.unlockedAchievements.update(achievements => {
+      this.unlockedAchievements.update((achievements) => {
         achievements.add(achievementId);
         return new Set(achievements);
       });
@@ -126,9 +130,9 @@ export class ProgressService {
   }
 
   public getTileLngSizeAtLat(lat: number): number {
-    const latRad = lat * Math.PI / 180;
+    const latRad = (lat * Math.PI) / 180;
     if (Math.abs(lat) >= 85) {
-      return this.TILE_SIZE_DEGREES_LAT / Math.cos(85 * Math.PI / 180);
+      return this.TILE_SIZE_DEGREES_LAT / Math.cos((85 * Math.PI) / 180);
     }
     return this.TILE_SIZE_DEGREES_LAT / Math.cos(latRad);
   }
@@ -161,7 +165,7 @@ export class ProgressService {
       const data = {
         totalDistance: this.totalDistance(),
         visitedTiles: Array.from(this.visitedTiles()),
-        exploredPath: this.exploredPath(),  // Оставляем как массив для локального хранения
+        exploredPath: this.exploredPath(),
         unlockedAchievements: Array.from(this.unlockedAchievements()),
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -212,7 +216,7 @@ export class ProgressService {
       const data: ProgressData = {
         totalDistance: this.totalDistance(),
         visitedTiles: Array.from(this.visitedTiles()),
-        exploredPath: JSON.stringify(this.exploredPath()),  // ✅ Сериализуем в строку
+        exploredPath: JSON.stringify(this.exploredPath()), // ✅ Сериализуем в строку
         unlockedAchievements: Array.from(this.unlockedAchievements()),
       };
       const progressDocRef = doc(this.db, 'users', user.uid, 'progress', 'main');
