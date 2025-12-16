@@ -9,7 +9,7 @@ export class LocationService {
   position = signal<GeolocationPosition | null>(null);
   status = signal<LocationStatus>('idle');
   private watchId: number | null = null;
-  private accuracyThreshold = 200; // ✅ Минимальная точность: 50 метров
+  private accuracyThreshold = 50; // ✅ Минимальная точность: 50 метров
 
   constructor() {
     // ✅ Следим за точностью позиции

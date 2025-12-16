@@ -1,6 +1,7 @@
 import { Injectable, signal, computed, inject, effect } from '@angular/core';
 // Fix: Use namespace import for firebase/app to work around potential module resolution issues.
-import * as firebaseApp from 'firebase/app';
+// FIX: The namespace import was incorrect for Firebase v9+. Switched to named imports.
+import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
 import {
   getAuth,
   type Auth,
@@ -19,7 +20,8 @@ import { firebaseConfig } from '../env';
   providedIn: 'root',
 })
 export class AuthService {
-  private app: firebaseApp.FirebaseApp | undefined;
+  // FIX: Use the imported FirebaseApp type directly.
+  private app: FirebaseApp | undefined;
   private auth: Auth | undefined;
 
   public currentUser = signal<User | null>(null);
@@ -43,10 +45,11 @@ export class AuthService {
         return;
       }
 
-      if (firebaseApp.getApps().length === 0) {
-        this.app = firebaseApp.initializeApp(firebaseConfig as any);
+      // FIX: Use imported Firebase functions directly instead of through a namespace.
+      if (getApps().length === 0) {
+        this.app = initializeApp(firebaseConfig as any);
       } else {
-        this.app = firebaseApp.getApp();
+        this.app = getApp();
       }
 
       this.auth = getAuth(this.app);

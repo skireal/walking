@@ -45,19 +45,21 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
     effect(() => {
       const pos = this.locationService.position();
       if (pos && this.isMapInitialized()) {
-        this.progressService.updatePosition(pos);
-
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
-        const newPoint: [number, number] = [lat, lng];
-        
+        const newPoint: [number, number] = [pos.coords.latitude, pos.coords.longitude];
+    
+        // Always update the map marker for immediate user feedback
         if (this.userMarker) {
           this.userMarker.setLatLng(newPoint);
         } else {
-           this.map.setView(newPoint, 17);
-           this.userMarker = L.marker(newPoint).addTo(this.map)
-             .bindPopup('You are here!')
-             .openPopup();
+          this.map.setView(newPoint, 17);
+          this.userMarker = L.marker(newPoint).addTo(this.map)
+            .bindPopup('You are here!')
+            .openPopup();
+        }
+        
+        // Only update progress and path if the location accuracy is good
+        if (this.locationService.hasGoodAccuracy()) {
+          this.progressService.updatePosition(pos);
         }
       }
     });
