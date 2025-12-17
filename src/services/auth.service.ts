@@ -1,6 +1,5 @@
 import { Injectable, signal, computed, inject, effect } from '@angular/core';
-// Fix: Use namespace import for firebase/app to work around potential module resolution issues.
-import * as firebaseApp from 'firebase/app';
+import { initializeApp, getApp, getApps, type FirebaseApp } from 'firebase/app';
 import {
   getAuth,
   type Auth,
@@ -19,7 +18,7 @@ import { firebaseConfig } from '../env';
   providedIn: 'root',
 })
 export class AuthService {
-  private app: firebaseApp.FirebaseApp | undefined;
+  private app: FirebaseApp | undefined;
   private auth: Auth | undefined;
 
   public currentUser = signal<User | null>(null);
@@ -43,10 +42,10 @@ export class AuthService {
         return;
       }
 
-      if (firebaseApp.getApps().length === 0) {
-        this.app = firebaseApp.initializeApp(firebaseConfig as any);
+      if (getApps().length === 0) {
+        this.app = initializeApp(firebaseConfig as any);
       } else {
-        this.app = firebaseApp.getApp();
+        this.app = getApp();
       }
 
       this.auth = getAuth(this.app);
