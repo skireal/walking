@@ -2,7 +2,6 @@ import { Component, ChangeDetectionStrategy, signal, computed, inject, AfterView
 import { CommonModule } from '@angular/common';
 import { LocationService } from '../../services/location.service';
 import { ProgressService } from '../../services/progress.service';
-import { LogService } from '../../services/log.service';
 import { GeminiService } from '../../services/gemini.service';
 
 declare var L: any;
@@ -16,7 +15,6 @@ declare var L: any;
 export class DashboardComponent implements AfterViewInit, OnDestroy {
   private locationService = inject(LocationService);
   private progressService = inject(ProgressService);
-  private logService = inject(LogService);
   private geminiService = inject(GeminiService);
 
   distance = computed(() => parseFloat((this.progressService.totalDistance() / 1000).toFixed(2)));
@@ -31,8 +29,6 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
   private readonly TILE_SIZE_DEGREES_LAT = this.progressService.TILE_SIZE_DEGREES_LAT;
 
   locationStatus = this.locationService.status;
-  isLoggingDiscovery = signal(false);
-  canLog = computed(() => !!this.locationService.position());
   
   greeting = computed(() => {
     const hour = new Date().getHours();
@@ -167,54 +163,5 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
     if(pos) {
       this.map.setView([pos.coords.latitude, pos.coords.longitude], 17);
     }
-  }
-
-  logDiscovery(): void {
-    const currentPosition = this.locationService.position();
-    if (!currentPosition) {
-      alert('Current location not available. Please wait for a GPS signal.');
-      return;
-    }
-
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/jpeg, image/png';
-    input.capture = 'environment';
-
-    input.onchange = () => {
-      const file = input.files?.[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = async (e: any) => {
-        this.isLoggingDiscovery.set(true);
-        try {
-          const imageDataUrl = e.target.result as string;
-          const base64String = imageDataUrl.split(',')[1];
-          const aiDescription = await this.geminiService.generateImageDescription(base64String);
-          const { latitude: lat, longitude: lng } = currentPosition.coords;
-
-          this.logService.addLogEntry({
-            imageDataUrl,
-            aiDescription,
-            location: { lat, lng },
-            userNotes: '',
-          });
-        } catch (error) {
-          console.error('Failed to create log entry:', error);
-          alert('Could not create log entry. Please try again.');
-        } finally {
-          this.isLoggingDiscovery.set(false);
-        }
-      };
-      reader.onerror = (error) => {
-        console.error('FileReader error:', error);
-        alert('Failed to read image file.');
-        this.isLoggingDiscovery.set(false);
-      };
-      reader.readAsDataURL(file);
-    };
-
-    input.click();
   }
 }

@@ -22,8 +22,7 @@ export class ProfileComponent {
 
   stats = computed(() => [
     { label: 'Tiles Explored', value: this.progressService.discoveredTilesCount().toLocaleString() },
-    { label: 'Total Distance', value: `${(this.progressService.totalDistance() / 1000).toFixed(1)} km` },
-    { label: 'Walks Logged', value: 'N/A' } // Placeholder for now
+    { label: 'Total Distance', value: `${(this.progressService.totalDistance() / 1000).toFixed(1)} km` }
   ]);
 
   achievements = this.achievementService.achievements;

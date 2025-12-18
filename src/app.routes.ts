@@ -17,11 +17,6 @@ export const APP_ROUTES: Routes = [
     canActivate: [authGuard]
   },
   {
-    path: 'log',
-    loadComponent: () => import('./components/log/log.component').then(m => m.LogComponent),
-    canActivate: [authGuard]
-  },
-  {
     path: 'planner',
     loadComponent: () => import('./components/ai-route-planner/ai-route-planner.component').then(m => m.AiRoutePlannerComponent),
     canActivate: [authGuard]
