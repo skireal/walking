@@ -21,8 +21,7 @@ export class ProfileComponent {
   joinDate = signal('Joined March 2023'); // This will be dynamic later
 
   stats = computed(() => [
-    { label: 'Tiles Explored', value: this.progressService.discoveredTilesCount().toLocaleString() },
-    { label: 'Total Distance', value: `${(this.progressService.totalDistance() / 1000).toFixed(1)} km` }
+    { label: 'Tiles Explored', value: this.progressService.discoveredTilesCount().toLocaleString() }
   ]);
 
   achievements = this.achievementService.achievements;

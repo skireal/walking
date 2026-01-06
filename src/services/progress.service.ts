@@ -4,13 +4,11 @@ import { getFirestore, doc, setDoc, onSnapshot, Firestore, Unsubscribe } from 'f
 
 declare var L: any;
 
-const STORAGE_KEY = 'walker_progress_data';
+const STORAGE_KEY = 'walker_progress_data_v2'; // Bump version to avoid conflicts
 const MIN_DISTANCE_THRESHOLD_METERS = 3; // Minimum distance in meters to record a new point
 
 interface ProgressData {
-  totalDistance: number;
   visitedTiles: string[];
-  exploredPath: string; // ← Сохраняем как одну строку
   unlockedAchievements: string[];
 }
 
@@ -18,9 +16,7 @@ interface ProgressData {
   providedIn: 'root',
 })
 export class ProgressService {
-  totalDistance = signal<number>(0);
   visitedTiles = signal<Set<string>>(new Set());
-  exploredPath = signal<[number, number][]>([]);
   unlockedAchievements = signal<Set<string>>(new Set());
 
   discoveredTilesCount = computed(() => this.visitedTiles().size);
@@ -32,6 +28,7 @@ export class ProgressService {
   private progressUnsubscribe: Unsubscribe | null = null;
   private isSyncing = signal(false);
   private saveTimeout: any = null;
+  private lastPosition: GeolocationPosition | null = null;
 
   constructor() {
     effect(() => {
@@ -67,17 +64,7 @@ export class ProgressService {
             if (docSnap.exists()) {
               const data = docSnap.data() as ProgressData;
               untracked(() => {
-                this.totalDistance.set(data.totalDistance || 0);
                 this.visitedTiles.set(new Set(data.visitedTiles || []));
-
-                // ✅ Десериализуем путь из строки
-                const pathString = data.exploredPath || '[]';
-                try {
-                  this.exploredPath.set(JSON.parse(pathString));
-                } catch {
-                  this.exploredPath.set([]);
-                }
-
                 this.unlockedAchievements.set(new Set(data.unlockedAchievements || []));
               });
             }
@@ -98,24 +85,20 @@ export class ProgressService {
     const lat = pos.coords.latitude;
     const lng = pos.coords.longitude;
     const newPoint: [number, number] = [lat, lng];
-    const path = this.exploredPath();
-    let distanceIncrement = 0;
+    
+    // If there's a previous point, check the distance to avoid rapid updates on static location
+    if (this.lastPosition) {
+        const lastLatLng = L.latLng([this.lastPosition.coords.latitude, this.lastPosition.coords.longitude]);
+        const newLatLng = L.latLng(newPoint);
+        const distanceChange = lastLatLng.distanceTo(newLatLng);
 
-    // If there's a previous point, check the distance
-    if (path.length > 0) {
-      const lastPoint = L.latLng(path[path.length - 1]);
-      const newLatLng = L.latLng(newPoint);
-      distanceIncrement = lastPoint.distanceTo(newLatLng);
-
-      // If movement is insignificant, do nothing.
-      if (distanceIncrement < MIN_DISTANCE_THRESHOLD_METERS) {
-        return;
-      }
+        // If movement is insignificant, do nothing.
+        if (distanceChange < MIN_DISTANCE_THRESHOLD_METERS) {
+            return;
+        }
     }
-
-    // Movement is significant (or it's the first point)
-    this.totalDistance.update((d) => d + distanceIncrement);
-    this.exploredPath.update((p) => [...p, newPoint]);
+    
+    this.lastPosition = pos;
 
     // Update the discovered tile if it's a new one
     const currentTileId = this.getTileIdForLatLng(lat, lng);
@@ -154,6 +137,7 @@ export class ProgressService {
     const representativeLat = (tileY + 0.5) * this.TILE_SIZE_DEGREES_LAT;
     const tileSizeLng = this.getTileLngSizeAtLat(representativeLat);
     const tileX = Math.floor(lng / tileSizeLng);
+    // FIX: Corrected a typo using the defined `tileY` variable instead of an undefined `y`.
     return `${tileX},${tileY}`;
   }
 
@@ -162,9 +146,7 @@ export class ProgressService {
       const savedData = localStorage.getItem(STORAGE_KEY);
       if (savedData) {
         const data = JSON.parse(savedData);
-        this.totalDistance.set(data.totalDistance || 0);
         this.visitedTiles.set(new Set(data.visitedTiles || []));
-        this.exploredPath.set(data.exploredPath || []);
         this.unlockedAchievements.set(new Set(data.unlockedAchievements || []));
       }
     } catch (e) {
@@ -174,10 +156,8 @@ export class ProgressService {
 
   private saveToLocalStorage(): void {
     try {
-      const data = {
-        totalDistance: this.totalDistance(),
+      const data: ProgressData = {
         visitedTiles: Array.from(this.visitedTiles()),
-        exploredPath: this.exploredPath(),
         unlockedAchievements: Array.from(this.unlockedAchievements()),
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -187,10 +167,9 @@ export class ProgressService {
   }
 
   public resetProgress(clearStorage: boolean = true): void {
-    this.totalDistance.set(0);
     this.visitedTiles.set(new Set());
-    this.exploredPath.set([]);
     this.unlockedAchievements.set(new Set());
+    this.lastPosition = null;
     if (clearStorage) {
       try {
         localStorage.removeItem(STORAGE_KEY);
@@ -226,9 +205,7 @@ export class ProgressService {
 
     try {
       const data: ProgressData = {
-        totalDistance: this.totalDistance(),
         visitedTiles: Array.from(this.visitedTiles()),
-        exploredPath: JSON.stringify(this.exploredPath()), // ✅ Сериализуем в строку
         unlockedAchievements: Array.from(this.unlockedAchievements()),
       };
       const progressDocRef = doc(this.db, 'users', user.uid, 'progress', 'main');

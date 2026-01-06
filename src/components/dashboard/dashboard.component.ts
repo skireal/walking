@@ -17,13 +17,11 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
   private progressService = inject(ProgressService);
   private geminiService = inject(GeminiService);
 
-  distance = computed(() => parseFloat((this.progressService.totalDistance() / 1000).toFixed(2)));
   discoveredTiles = this.progressService.discoveredTilesCount;
   
   private map: any;
   private isMapInitialized = signal(false);
   private userMarker: any;
-  private pathPolyline: any;
   
   private fogGridLayer: any;
   private readonly TILE_SIZE_DEGREES_LAT = this.progressService.TILE_SIZE_DEGREES_LAT;
@@ -58,17 +56,6 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
           this.progressService.updatePosition(pos);
         }
       }
-    });
-
-    effect(() => {
-        const exploredPath = this.progressService.exploredPath();
-        if (this.isMapInitialized()) {
-            if (this.pathPolyline) {
-                this.pathPolyline.setLatLngs(exploredPath);
-            } else if (exploredPath.length > 0) {
-                this.pathPolyline = L.polyline(exploredPath, { color: '#2dd4bf', weight: 5 }).addTo(this.map);
-            }
-        }
     });
     
     effect(() => {
@@ -105,10 +92,6 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
     this.locationService.startWatching();
     this.isMapInitialized.set(true);
 
-    const exploredPath = this.progressService.exploredPath();
-    if (exploredPath.length > 0) {
-        this.pathPolyline = L.polyline(exploredPath, { color: '#2dd4bf', weight: 5 }).addTo(this.map);
-    }
     this.updateFogGrid();
   }
 
