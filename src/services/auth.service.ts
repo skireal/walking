@@ -31,7 +31,13 @@ export class AuthService {
 
   private isFirebaseReadySignal = signal(false);
 
+  private resolveAuthState!: () => void;
+  private readonly authStateResolved: Promise<void>;
+
   constructor() {
+    this.authStateResolved = new Promise<void>((resolve) => {
+      this.resolveAuthState = resolve;
+    });
     this.initializeFirebase();
   }
 
@@ -39,6 +45,7 @@ export class AuthService {
     try {
       if (!firebaseConfig || !firebaseConfig.apiKey) {
         console.warn('Firebase config not found (env vars missing). App running in offline mode.');
+        this.resolveAuthState(); // Resolve auth state if Firebase is not configured
         return;
       }
 
@@ -55,11 +62,15 @@ export class AuthService {
     } catch (error) {
       console.error('Firebase initialization error:', error);
       this.isFirebaseReadySignal.set(false);
+      this.resolveAuthState(); // Resolve auth state on initialization error
     }
   }
 
   private async setupAuthStateObserver(): Promise<void> {
-    if (!this.auth) return;
+    if (!this.auth) {
+      this.resolveAuthState(); // Resolve auth state if auth service is not available
+      return;
+    }
 
     try {
       await setPersistence(this.auth, browserLocalPersistence);
@@ -75,6 +86,7 @@ export class AuthService {
       }
 
       this.authStateChanged.set({ user, isLoggedIn: !!user });
+      this.resolveAuthState(); // This resolves the promise on the first auth state check
     });
   }
 
@@ -97,5 +109,9 @@ export class AuthService {
 
   public isFirebaseReady(): boolean {
     return this.isFirebaseReadySignal();
+  }
+
+  public waitForAuth(): Promise<void> {
+    return this.authStateResolved;
   }
 }
