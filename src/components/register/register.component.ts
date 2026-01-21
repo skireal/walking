@@ -12,7 +12,8 @@ import { AuthService } from '../../services/auth.service';
 })
 export class RegisterComponent {
   private authService = inject(AuthService);
-  private router = inject(Router);
+  // FIX: Explicitly provide the generic type to `inject` to fix a type inference issue where the router was being inferred as `unknown`.
+  private router = inject<Router>(Router);
 
   email = signal('');
   password = signal('');

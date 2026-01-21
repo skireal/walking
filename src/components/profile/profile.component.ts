@@ -15,7 +15,8 @@ export class ProfileComponent {
   private progressService = inject(ProgressService);
   private achievementService = inject(AchievementService);
   private authService = inject(AuthService);
-  private router = inject(Router);
+  // FIX: Explicitly provide the generic type to `inject` to fix a type inference issue where the router was being inferred as `unknown`.
+  private router = inject<Router>(Router);
 
   currentUser = this.authService.currentUser;
   joinDate = signal('Joined March 2023'); // This will be dynamic later

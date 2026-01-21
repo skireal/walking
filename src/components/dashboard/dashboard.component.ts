@@ -47,8 +47,6 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
         } else {
           this.map.setView(newPoint, 17);
           this.userMarker = L.marker(newPoint).addTo(this.map)
-            .bindPopup('You are here!')
-            .openPopup();
         }
         
         // Only update progress and path if the location accuracy is good

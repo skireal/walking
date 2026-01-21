@@ -4,7 +4,8 @@ import { AuthService } from '../services/auth.service';
 
 export const authGuard: CanActivateFn = async (): Promise<boolean | UrlTree> => {
   const authService = inject(AuthService);
-  const router = inject(Router);
+  // FIX: Explicitly provide the generic type to `inject` to fix a type inference issue where the router was being inferred as `unknown`.
+  const router = inject<Router>(Router);
 
   // Wait until the initial authentication state is resolved
   await authService.waitForAuth();
