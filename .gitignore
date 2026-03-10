@@ -27,3 +27,4 @@ dist-ssr
 .angular
 src/env.ts
 PROJECT_OVERVIEW.md
+android/
