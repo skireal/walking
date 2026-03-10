@@ -1,4 +1,8 @@
-import { Injectable, signal, effect } from '@angular/core';
+import { Injectable, signal, effect, inject, DestroyRef } from '@angular/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
+import type { BackgroundGeolocationPlugin, Location, CallbackError } from '@capacitor-community/background-geolocation';
+
+const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>('BackgroundGeolocation');
 
 export type LocationStatus = 'idle' | 'tracking' | 'denied' | 'error' | 'initializing' | 'low-accuracy';
 
@@ -9,10 +13,12 @@ export class LocationService {
   position = signal<GeolocationPosition | null>(null);
   status = signal<LocationStatus>('idle');
   private watchId: number | null = null;
-  private accuracyThreshold = 50; // ✅ Минимальная точность: 50 метров
+  private nativeWatcherId: string | null = null;
+  private accuracyThreshold = 50; // Минимальная точность: 50 метров
+  private destroyRef = inject(DestroyRef);
 
   constructor() {
-    // ✅ Следим за точностью позиции
+    // Следим за точностью позиции
     effect(() => {
       const pos = this.position();
       if (pos && pos.coords.accuracy > this.accuracyThreshold) {
@@ -22,9 +28,78 @@ export class LocationService {
         }
       }
     });
+
+    this.destroyRef.onDestroy(() => this.stopWatching());
   }
 
   startWatching(): void {
+    if (Capacitor.isNativePlatform()) {
+      this.startNativeWatching();
+    } else {
+      this.startWebWatching();
+    }
+  }
+
+  // ── Native (Android/iOS) ───────────────────────────────────────────────────
+  // Запускает Foreground Service — геолокация работает даже когда экран выключен.
+
+  private startNativeWatching(): void {
+    this.status.set('initializing');
+
+    BackgroundGeolocation.addWatcher(
+      {
+        backgroundMessage: 'Walker отслеживает ваш маршрут',
+        backgroundTitle: 'Walker активен',
+        requestPermissions: true,
+        stale: false,
+        distanceFilter: 3, // метров — минимальный сдвиг для нового колбэка
+      },
+      (location: Location | undefined, error: CallbackError | undefined) => {
+        if (error) {
+          console.error('❌ Background geolocation error:', error);
+          this.status.set(error.code === 'NOT_AUTHORIZED' ? 'denied' : 'error');
+          return;
+        }
+        if (location) {
+          // Приводим к типу GeolocationPosition для совместимости с остальным кодом
+          const pos = {
+            coords: {
+              latitude: location.latitude,
+              longitude: location.longitude,
+              accuracy: location.accuracy,
+              altitude: location.altitude ?? null,
+              altitudeAccuracy: null,
+              heading: location.bearing ?? null,
+              speed: location.speed ?? null,
+            },
+            timestamp: location.time,
+          } as GeolocationPosition;
+
+          this.position.set(pos);
+
+          if (location.accuracy <= this.accuracyThreshold) {
+            if (this.status() !== 'tracking') {
+              this.status.set('tracking');
+              console.log(`✅ GPS acquired! Accuracy: ${Math.round(location.accuracy)}m`);
+            }
+          } else {
+            if (this.status() !== 'low-accuracy') {
+              this.status.set('low-accuracy');
+            }
+          }
+        }
+      }
+    ).then((id: string) => {
+      this.nativeWatcherId = id;
+    }).catch((err: unknown) => {
+      console.error('❌ Failed to start background geolocation:', err);
+      this.status.set('error');
+    });
+  }
+
+  // ── Web (браузер) ──────────────────────────────────────────────────────────
+
+  private startWebWatching(): void {
     if (!navigator.geolocation) {
       this.status.set('error');
       console.error('❌ Geolocation is not supported by this browser.');
@@ -33,16 +108,14 @@ export class LocationService {
 
     this.status.set('initializing');
 
-    // ✅ Получи первую позицию БЫСТРО (может быть неточная)
+    // Получи первую позицию БЫСТРО (может быть неточная)
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         if (pos.coords.accuracy <= this.accuracyThreshold) {
-          // ✅ Хорошая точность с первого раза
           this.position.set(pos);
           this.status.set('tracking');
           console.log(`✅ Good accuracy (${Math.round(pos.coords.accuracy)}m) on first try:`, pos.coords);
         } else {
-          // ⚠️ Плохая точность - используем как временную и ждём улучшения
           console.warn(`⚠️ Initial position has low accuracy (${Math.round(pos.coords.accuracy)}m), waiting for GPS...`);
           this.position.set(pos);
           this.status.set('low-accuracy');
@@ -51,16 +124,15 @@ export class LocationService {
       (err) => {
         console.error(`❌ getCurrentPosition error (${err.code}):`, err.message);
         this.handleLocationError(err);
-        // ✅ Продолжаем с watchPosition даже если getCurrentPosition не сработал
       },
       {
-        enableHighAccuracy: true, // ✅ Требуем высокую точность
-        timeout: 10000, // 10 секунд на первую позицию
-        maximumAge: 0, // Не используем кеш
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
       }
     );
 
-    // ✅ watchPosition для получения лучшей точности со временем
+    // watchPosition для получения лучшей точности со временем
     this.watchId = navigator.geolocation.watchPosition(
       (pos) => {
         console.log(
@@ -70,7 +142,6 @@ export class LocationService {
 
         this.position.set(pos);
 
-        // ✅ Обновляем статус когда точность улучшается
         if (pos.coords.accuracy <= this.accuracyThreshold) {
           if (this.status() !== 'tracking') {
             this.status.set('tracking');
@@ -87,19 +158,28 @@ export class LocationService {
         this.handleLocationError(err);
       },
       {
-        enableHighAccuracy: true, // ✅ Требуем GPS
-        timeout: 30000, // 30 секунд для каждого обновления
-        maximumAge: 5000, // Можем использовать позицию до 5 сек старую
+        enableHighAccuracy: true,
+        timeout: 30000,
+        maximumAge: 5000,
       }
     );
   }
 
+  // ── Общее ──────────────────────────────────────────────────────────────────
+
   stopWatching(): void {
-    if (this.watchId !== null) {
-      navigator.geolocation.clearWatch(this.watchId);
-      this.watchId = null;
-      this.status.set('idle');
+    if (Capacitor.isNativePlatform()) {
+      if (this.nativeWatcherId) {
+        BackgroundGeolocation.removeWatcher({ id: this.nativeWatcherId });
+        this.nativeWatcherId = null;
+      }
+    } else {
+      if (this.watchId !== null) {
+        navigator.geolocation.clearWatch(this.watchId);
+        this.watchId = null;
+      }
     }
+    this.status.set('idle');
   }
 
   private handleLocationError(err: GeolocationPositionError): void {
@@ -122,13 +202,11 @@ export class LocationService {
     }
   }
 
-  // ✅ Проверка точности позиции
   hasGoodAccuracy(): boolean {
     const pos = this.position();
     return pos !== null && pos.coords.accuracy <= this.accuracyThreshold;
   }
 
-  // ✅ Получить текущую точность в метрах
   getCurrentAccuracy(): number | null {
     const pos = this.position();
     return pos?.coords.accuracy ?? null;
