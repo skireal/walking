@@ -1,4 +1,4 @@
-import { Injectable, signal, computed, inject, effect } from '@angular/core';
+import { Injectable, signal, computed, inject, effect, DestroyRef } from '@angular/core';
 import { initializeApp, getApp, getApps, type FirebaseApp } from 'firebase/app';
 import {
   getAuth,
@@ -14,12 +14,24 @@ import {
 
 import { firebaseConfig } from '../env';
 
+interface FirebaseAppConfig {
+  apiKey: string;
+  authDomain?: string;
+  projectId?: string;
+  storageBucket?: string;
+  messagingSenderId?: string;
+  appId?: string;
+  [key: string]: string | undefined;
+}
+
 @Injectable({
   providedIn: 'root',
 })
 export class AuthService {
   private app: FirebaseApp | undefined;
   private auth: Auth | undefined;
+  private authUnsubscribe: (() => void) | null = null;
+  private destroyRef = inject(DestroyRef);
 
   public currentUser = signal<User | null>(null);
   public isLoggedIn = computed(() => !!this.currentUser());
@@ -39,6 +51,13 @@ export class AuthService {
       this.resolveAuthState = resolve;
     });
     this.initializeFirebase();
+
+    this.destroyRef.onDestroy(() => {
+      if (this.authUnsubscribe) {
+        this.authUnsubscribe();
+        this.authUnsubscribe = null;
+      }
+    });
   }
 
   private initializeFirebase(): void {
@@ -50,7 +69,7 @@ export class AuthService {
       }
 
       if (getApps().length === 0) {
-        this.app = initializeApp(firebaseConfig as any);
+        this.app = initializeApp(firebaseConfig as FirebaseAppConfig);
       } else {
         this.app = getApp();
       }
@@ -78,13 +97,8 @@ export class AuthService {
       console.error('Failed to set auth persistence:', error);
     }
 
-    onAuthStateChanged(this.auth, (user) => {
-      if (user) {
-        this.currentUser.set(user);
-      } else {
-        this.currentUser.set(null);
-      }
-
+    this.authUnsubscribe = onAuthStateChanged(this.auth, (user) => {
+      this.currentUser.set(user);
       this.authStateChanged.set({ user, isLoggedIn: !!user });
       this.resolveAuthState(); // This resolves the promise on the first auth state check
     });

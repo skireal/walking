@@ -1,8 +1,16 @@
-import { Injectable, signal, computed, inject, effect, untracked } from '@angular/core';
+import { Injectable, signal, computed, inject, effect, untracked, DestroyRef } from '@angular/core';
 import { AuthService } from './auth.service';
 import { getFirestore, doc, setDoc, onSnapshot, Firestore, Unsubscribe } from 'firebase/firestore';
 
-declare var L: any;
+interface LeafletLatLng {
+  distanceTo(other: LeafletLatLng): number;
+}
+
+interface LeafletStatic {
+  latLng(coords: [number, number]): LeafletLatLng;
+}
+
+declare var L: LeafletStatic | undefined;
 
 const STORAGE_KEY = 'walker_progress_data_v2'; // Bump version to avoid conflicts
 const MIN_DISTANCE_THRESHOLD_METERS = 3; // Minimum distance in meters to record a new point
@@ -24,13 +32,25 @@ export class ProgressService {
   public readonly TILE_SIZE_DEGREES_LAT = 0.0005;
 
   private authService = inject(AuthService);
+  private destroyRef = inject(DestroyRef);
   private db: Firestore | null = null;
   private progressUnsubscribe: Unsubscribe | null = null;
   private isSyncing = signal(false);
-  private saveTimeout: any = null;
+  private saveTimeout: ReturnType<typeof setTimeout> | null = null;
   private lastPosition: GeolocationPosition | null = null;
 
   constructor() {
+    this.destroyRef.onDestroy(() => {
+      if (this.saveTimeout) {
+        clearTimeout(this.saveTimeout);
+        this.saveTimeout = null;
+      }
+      if (this.progressUnsubscribe) {
+        this.progressUnsubscribe();
+        this.progressUnsubscribe = null;
+      }
+    });
+
     effect(() => {
       const user = this.authService.currentUser();
       const isFirebaseReady = this.authService.isFirebaseReady();
@@ -87,7 +107,8 @@ export class ProgressService {
     const newPoint: [number, number] = [lat, lng];
     
     // If there's a previous point, check the distance to avoid rapid updates on static location
-    if (this.lastPosition) {
+    if (this.lastPosition && typeof L !== 'undefined') {
+      try {
         const lastLatLng = L.latLng([this.lastPosition.coords.latitude, this.lastPosition.coords.longitude]);
         const newLatLng = L.latLng(newPoint);
         const distanceChange = lastLatLng.distanceTo(newLatLng);
@@ -96,6 +117,9 @@ export class ProgressService {
         if (distanceChange < MIN_DISTANCE_THRESHOLD_METERS) {
             return;
         }
+      } catch (e) {
+        console.error('Error calculating distance with Leaflet:', e);
+      }
     }
     
     this.lastPosition = pos;

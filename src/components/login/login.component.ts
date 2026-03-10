@@ -21,13 +21,18 @@ export class LoginComponent {
   isLoading = signal(false);
 
   async login(): Promise<void> {
+    if (!this.email().trim() || !this.password()) {
+      this.error.set('Please enter both email and password.');
+      return;
+    }
+
     this.isLoading.set(true);
     this.error.set(null);
     try {
       await this.authService.login(this.email(), this.password());
       this.router.navigate(['/dashboard']);
-    } catch (e: any) {
-      this.error.set(e.message || 'Failed to log in.');
+    } catch (e: unknown) {
+      this.error.set(e instanceof Error ? e.message : 'Failed to log in.');
     } finally {
       this.isLoading.set(false);
     }

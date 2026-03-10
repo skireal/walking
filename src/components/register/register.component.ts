@@ -22,6 +22,16 @@ export class RegisterComponent {
   isLoading = signal(false);
 
   async register(): Promise<void> {
+    if (!this.email().trim() || !this.password()) {
+      this.error.set('Please enter both email and password.');
+      return;
+    }
+
+    if (this.password().length < 6) {
+      this.error.set('Password must be at least 6 characters.');
+      return;
+    }
+
     if (this.password() !== this.confirmPassword()) {
       this.error.set('Passwords do not match.');
       return;
@@ -33,8 +43,8 @@ export class RegisterComponent {
     try {
       await this.authService.register(this.email(), this.password());
       this.router.navigate(['/dashboard']);
-    } catch (e: any) {
-      this.error.set(e.message || 'Failed to register.');
+    } catch (e: unknown) {
+      this.error.set(e instanceof Error ? e.message : 'Failed to register.');
     } finally {
       this.isLoading.set(false);
     }
