@@ -43,11 +43,12 @@
             id="confirm-password" 
             name="confirm-password" 
             type="password" 
-            autocomplete="new-password" 
-            required 
+            autocomplete="new-password"
+            required
+            minlength="6"
             [ngModel]="confirmPassword()"
             (ngModelChange)="confirmPassword.set($event)"
-            class="appearance-none rounded-none relative block w-full px-3 py-3 border border-gray-700 bg-gray-800 text-white placeholder-gray-500 rounded-b-md focus:outline-none focus:ring-teal-500 focus:border-teal-500 focus:z-10 sm:text-sm" 
+            class="appearance-none rounded-none relative block w-full px-3 py-3 border border-gray-700 bg-gray-800 text-white placeholder-gray-500 rounded-b-md focus:outline-none focus:ring-teal-500 focus:border-teal-500 focus:z-10 sm:text-sm"
             placeholder="Confirm Password">
         </div>
       </div>
@@ -61,8 +62,8 @@
       <div>
         <button 
           type="submit" 
-          [disabled]="isLoading()"
-          class="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-teal-600 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 focus:ring-offset-gray-900 disabled:opacity-50 disabled:cursor-wait">
+          [disabled]="isLoading() || password() !== confirmPassword() || email().trim().length === 0 || password().length < 6"
+          class="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-teal-600 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 focus:ring-offset-gray-900 disabled:opacity-50 disabled:cursor-not-allowed">
           @if (isLoading()) {
             <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
           } @else {
