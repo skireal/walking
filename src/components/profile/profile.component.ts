@@ -19,7 +19,14 @@ export class ProfileComponent {
   private router = inject<Router>(Router);
 
   currentUser = this.authService.currentUser;
-  joinDate = signal('Joined March 2023'); // This will be dynamic later
+  joinDate = computed(() => {
+    const user = this.authService.currentUser();
+    if (user?.metadata?.creationTime) {
+      const date = new Date(user.metadata.creationTime);
+      return `Joined ${date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`;
+    }
+    return 'Walker Member';
+  });
 
   stats = computed(() => [
     { label: 'Tiles Explored', value: this.progressService.discoveredTilesCount().toLocaleString() }
