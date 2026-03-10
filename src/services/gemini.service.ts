@@ -1,6 +1,8 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable } from '@angular/core';
 import { GoogleGenAI, Type } from '@google/genai';
 import { GEMINI_API_KEY } from '../env';
+
+const GEMINI_MODEL = 'gemini-2.5-flash';
 
 export interface RouteSuggestion {
   routeName: string;
@@ -20,8 +22,8 @@ export class GeminiService {
   constructor() {
     // Ключ берём из центрального env-файла (не из process.env, чтобы не падать в браузере)
     const apiKey = GEMINI_API_KEY;
-    if (apiKey) {
-      this.genAI = new GoogleGenAI({ apiKey });
+    if (apiKey && apiKey.trim().length > 0) {
+      this.genAI = new GoogleGenAI({ apiKey: apiKey.trim() });
     } else {
       console.error('GEMINI_API_KEY is empty. Configure it in src/env.ts (локально, без коммита).');
     }
@@ -32,7 +34,7 @@ export class GeminiService {
       throw new Error('Gemini AI client is not initialized. Check API Key.');
     }
 
-    const model = 'gemini-2.5-flash';
+    const model = GEMINI_MODEL;
     const prompt = `Suggest a scenic walking route starting near ${location} that takes about ${duration} minutes for an average walker. Describe the route, mention a few points of interest by name, and provide simple turn-by-turn directions.`;
 
     const schema = {
@@ -75,10 +77,17 @@ export class GeminiService {
       if (!text) {
         throw new Error('Empty response from Gemini API.');
       }
-      return JSON.parse(text) as RouteSuggestion;
+      try {
+        return JSON.parse(text) as RouteSuggestion;
+      } catch {
+        console.error('Failed to parse Gemini response as JSON:', text);
+        throw new Error('AI returned an invalid response format.');
+      }
     } catch (error) {
       console.error('Error calling Gemini API for route suggestion:', error);
-      throw new Error('Failed to get route suggestion from AI.');
+      throw error instanceof Error && error.message.includes('invalid response')
+        ? error
+        : new Error('Failed to get route suggestion from AI.');
     }
   }
 
@@ -87,7 +96,7 @@ export class GeminiService {
       throw new Error('Gemini AI client is not initialized. Check API Key.');
     }
 
-    const model = 'gemini-2.5-flash';
+    const model = GEMINI_MODEL;
     const imagePart = {
       inlineData: {
         mimeType: 'image/jpeg',
