@@ -2,8 +2,9 @@ import { Component, ChangeDetectionStrategy, signal, computed, inject, AfterView
 import { CommonModule } from '@angular/common';
 import { LocationService } from '../../services/location.service';
 import { ProgressService } from '../../services/progress.service';
-import { GeminiService } from '../../services/gemini.service';
+import { AuthService } from '../../services/auth.service';
 
+// Leaflet is loaded globally via CDN
 declare var L: any;
 
 @Component({
@@ -15,7 +16,7 @@ declare var L: any;
 export class DashboardComponent implements AfterViewInit, OnDestroy {
   private locationService = inject(LocationService);
   private progressService = inject(ProgressService);
-  private geminiService = inject(GeminiService);
+  private authService = inject(AuthService);
 
   discoveredTiles = this.progressService.discoveredTilesCount;
   
@@ -28,6 +29,15 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
 
   locationStatus = this.locationService.status;
   
+  userName = computed(() => {
+    const email = this.authService.currentUser()?.email;
+    if (!email) return '';
+    // Extract name part from email (before @)
+    const namePart = email.split('@')[0];
+    // Capitalize first letter
+    return namePart.charAt(0).toUpperCase() + namePart.slice(1);
+  });
+
   greeting = computed(() => {
     const hour = new Date().getHours();
     if (hour < 12) return 'Good Morning';
@@ -95,47 +105,51 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
 
   private updateFogGrid(): void {
     if (!this.map) return;
-    
-    if (this.map.getZoom() < 16) {
+
+    try {
+      if (this.map.getZoom() < 16) {
+        this.fogGridLayer.clearLayers();
+        return;
+      }
+
       this.fogGridLayer.clearLayers();
-      return;
-    }
+      const bounds = this.map.getBounds();
+      const visitedTiles = this.progressService.visitedTiles();
 
-    this.fogGridLayer.clearLayers();
-    const bounds = this.map.getBounds();
-    const visitedTiles = this.progressService.visitedTiles();
+      const northEast = bounds.getNorthEast();
+      const southWest = bounds.getSouthWest();
 
-    const northEast = bounds.getNorthEast();
-    const southWest = bounds.getSouthWest();
+      const startY = Math.floor(southWest.lat / this.TILE_SIZE_DEGREES_LAT) - 1;
+      const endY = Math.floor(northEast.lat / this.TILE_SIZE_DEGREES_LAT) + 1;
 
-    const startY = Math.floor(southWest.lat / this.TILE_SIZE_DEGREES_LAT) - 1;
-    const endY = Math.floor(northEast.lat / this.TILE_SIZE_DEGREES_LAT) + 1;
-    
-    for (let y = startY; y <= endY; y++) {
-        const rowLat = (y + 0.5) * this.TILE_SIZE_DEGREES_LAT;
-        const tileSizeLng = this.progressService.getTileLngSizeAtLat(rowLat);
+      for (let y = startY; y <= endY; y++) {
+          const rowLat = (y + 0.5) * this.TILE_SIZE_DEGREES_LAT;
+          const tileSizeLng = this.progressService.getTileLngSizeAtLat(rowLat);
 
-        const startX = Math.floor(southWest.lng / tileSizeLng) - 1;
-        const endX = Math.floor(northEast.lng / tileSizeLng) + 1;
+          const startX = Math.floor(southWest.lng / tileSizeLng) - 1;
+          const endX = Math.floor(northEast.lng / tileSizeLng) + 1;
 
-        for (let x = startX; x <= endX; x++) {
-            const tileId = `${x},${y}`;
+          for (let x = startX; x <= endX; x++) {
+              const tileId = `${x},${y}`;
 
-            if (!visitedTiles.has(tileId)) {
-                const tileBounds = [
-                    [y * this.TILE_SIZE_DEGREES_LAT, x * tileSizeLng],
-                    [(y + 1) * this.TILE_SIZE_DEGREES_LAT, (x + 1) * tileSizeLng]
-                ];
+              if (!visitedTiles.has(tileId)) {
+                  const tileBounds = [
+                      [y * this.TILE_SIZE_DEGREES_LAT, x * tileSizeLng],
+                      [(y + 1) * this.TILE_SIZE_DEGREES_LAT, (x + 1) * tileSizeLng]
+                  ];
 
-                L.rectangle(tileBounds, {
-                    color: '#374151',
-                    weight: 0.5,
-                    fillColor: '#111827',
-                    fillOpacity: 0.7,
-                    interactive: false,
-                }).addTo(this.fogGridLayer);
-            }
-        }
+                  L.rectangle(tileBounds, {
+                      color: '#374151',
+                      weight: 0.5,
+                      fillColor: '#111827',
+                      fillOpacity: 0.7,
+                      interactive: false,
+                  }).addTo(this.fogGridLayer);
+              }
+          }
+      }
+    } catch (e) {
+      console.error('Error updating fog grid:', e);
     }
   }
   

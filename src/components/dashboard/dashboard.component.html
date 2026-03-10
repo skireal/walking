@@ -7,7 +7,7 @@
     <div class="max-w-md mx-auto bg-gray-900/70 backdrop-blur-sm p-4 rounded-xl shadow-2xl pointer-events-auto">
       <header class="flex justify-between items-center">
         <div>
-          <h1 class="text-2xl font-bold text-white">{{ greeting() }}, Alex</h1>
+          <h1 class="text-2xl font-bold text-white">{{ greeting() }}@if (userName(); as name) {, {{ name }}}</h1>
           <p class="text-gray-400 text-sm">Let's explore!</p>
         </div>
         <div class="flex items-center space-x-2">
@@ -45,6 +45,7 @@
     <!-- Recenter Button -->
     <button
       (click)="recenterMap()"
+      aria-label="Recenter map on current location"
       class="bg-gray-800/80 backdrop-blur-sm text-white p-3 rounded-full shadow-lg active:scale-95 transition-transform"
     >
       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
