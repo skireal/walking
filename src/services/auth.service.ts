@@ -1,15 +1,15 @@
 import { Injectable, signal, computed, inject, effect, DestroyRef } from '@angular/core';
 import { initializeApp, getApp, getApps, type FirebaseApp } from 'firebase/app';
 import {
-  getAuth,
+  initializeAuth,
+  indexedDBLocalPersistence,
+  browserLocalPersistence,
   type Auth,
   onAuthStateChanged,
   type User,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
-  setPersistence,
-  browserLocalPersistence,
 } from 'firebase/auth';
 
 import { firebaseConfig } from '../env';
@@ -74,7 +74,12 @@ export class AuthService {
         this.app = getApp();
       }
 
-      this.auth = getAuth(this.app);
+      // initializeAuth с явным массивом persistence гарантирует правильное хранилище
+      // ещё ДО первого обращения к Auth — IndexedDB надёжнее на Android WebView (Capacitor),
+      // localStorage как fallback для браузера.
+      this.auth = initializeAuth(this.app, {
+        persistence: [indexedDBLocalPersistence, browserLocalPersistence],
+      });
 
       this.setupAuthStateObserver();
       this.isFirebaseReadySignal.set(true);
@@ -85,16 +90,10 @@ export class AuthService {
     }
   }
 
-  private async setupAuthStateObserver(): Promise<void> {
+  private setupAuthStateObserver(): void {
     if (!this.auth) {
-      this.resolveAuthState(); // Resolve auth state if auth service is not available
+      this.resolveAuthState();
       return;
-    }
-
-    try {
-      await setPersistence(this.auth, browserLocalPersistence);
-    } catch (error) {
-      console.error('Failed to set auth persistence:', error);
     }
 
     this.authUnsubscribe = onAuthStateChanged(this.auth, (user) => {
