@@ -1,6 +1,8 @@
 import { Injectable, signal, effect, inject, DestroyRef } from '@angular/core';
 import { Capacitor, registerPlugin } from '@capacitor/core';
+import { App } from '@capacitor/app';
 import type { BackgroundGeolocationPlugin, Location, CallbackError } from '@capacitor-community/background-geolocation';
+import { LocationBuffer, type BufferedLocation } from '../plugins/location-buffer.plugin';
 
 const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>('BackgroundGeolocation');
 
@@ -42,9 +44,21 @@ export class LocationService {
 
   // ── Native (Android/iOS) ───────────────────────────────────────────────────
   // Запускает Foreground Service — геолокация работает даже когда экран выключен.
+  // LocationBuffer пишет координаты в SharedPreferences пока WebView на паузе.
+  // При открытии приложения буфер считывается и применяется к туману.
 
   private startNativeWatching(): void {
     this.status.set('initializing');
+
+    // Запускаем буферизацию координат на нативной стороне
+    LocationBuffer.startBuffering().catch((err: unknown) => {
+      console.warn('⚠️ LocationBuffer.startBuffering failed:', err);
+    });
+
+    // Подписываемся на resume — читаем накопленный буфер
+    App.addListener('resume', () => {
+      this.flushLocationBuffer();
+    });
 
     BackgroundGeolocation.addWatcher(
       {
@@ -61,32 +75,15 @@ export class LocationService {
           return;
         }
         if (location) {
-          // Приводим к типу GeolocationPosition для совместимости с остальным кодом
-          const pos = {
-            coords: {
-              latitude: location.latitude,
-              longitude: location.longitude,
-              accuracy: location.accuracy,
-              altitude: location.altitude ?? null,
-              altitudeAccuracy: null,
-              heading: location.bearing ?? null,
-              speed: location.speed ?? null,
-            },
-            timestamp: location.time,
-          } as GeolocationPosition;
-
-          this.position.set(pos);
-
-          if (location.accuracy <= this.accuracyThreshold) {
-            if (this.status() !== 'tracking') {
-              this.status.set('tracking');
-              console.log(`✅ GPS acquired! Accuracy: ${Math.round(location.accuracy)}m`);
-            }
-          } else {
-            if (this.status() !== 'low-accuracy') {
-              this.status.set('low-accuracy');
-            }
-          }
+          this.applyLocation(
+            location.latitude,
+            location.longitude,
+            location.accuracy,
+            location.time,
+            location.bearing ?? null,
+            location.speed ?? null,
+            location.altitude ?? null,
+          );
         }
       }
     ).then((id: string) => {
@@ -95,6 +92,67 @@ export class LocationService {
       console.error('❌ Failed to start background geolocation:', err);
       this.status.set('error');
     });
+  }
+
+  // Читает буфер накопленных координат и применяет их по одной
+  private async flushLocationBuffer(): Promise<void> {
+    try {
+      const { locations } = await LocationBuffer.getAndClearBuffer();
+      const parsed: BufferedLocation[] = JSON.parse(locations);
+      if (parsed.length === 0) return;
+
+      console.log(`📦 Flushing ${parsed.length} buffered locations`);
+      for (const loc of parsed) {
+        this.applyLocation(
+          loc.latitude,
+          loc.longitude,
+          loc.accuracy,
+          loc.time,
+          loc.bearing ?? null,
+          loc.speed ?? null,
+          loc.altitude ?? null,
+        );
+      }
+    } catch (err) {
+      console.warn('⚠️ Failed to flush location buffer:', err);
+    }
+  }
+
+  // Общий метод — применяет одну координату к сигналу позиции
+  private applyLocation(
+    latitude: number,
+    longitude: number,
+    accuracy: number,
+    time: number,
+    heading: number | null,
+    speed: number | null,
+    altitude: number | null,
+  ): void {
+    const pos = {
+      coords: {
+        latitude,
+        longitude,
+        accuracy,
+        altitude,
+        altitudeAccuracy: null,
+        heading,
+        speed,
+      },
+      timestamp: time,
+    } as GeolocationPosition;
+
+    this.position.set(pos);
+
+    if (accuracy <= this.accuracyThreshold) {
+      if (this.status() !== 'tracking') {
+        this.status.set('tracking');
+        console.log(`✅ GPS acquired! Accuracy: ${Math.round(accuracy)}m`);
+      }
+    } else {
+      if (this.status() !== 'low-accuracy') {
+        this.status.set('low-accuracy');
+      }
+    }
   }
 
   // ── Web (браузер) ──────────────────────────────────────────────────────────
@@ -108,7 +166,6 @@ export class LocationService {
 
     this.status.set('initializing');
 
-    // Получи первую позицию БЫСТРО (может быть неточная)
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         if (pos.coords.accuracy <= this.accuracyThreshold) {
@@ -125,43 +182,27 @@ export class LocationService {
         console.error(`❌ getCurrentPosition error (${err.code}):`, err.message);
         this.handleLocationError(err);
       },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0,
-      }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
 
-    // watchPosition для получения лучшей точности со временем
     this.watchId = navigator.geolocation.watchPosition(
       (pos) => {
         console.log(
           `📍 Position update - Accuracy: ${Math.round(pos.coords.accuracy)}m, ` +
             `Lat: ${pos.coords.latitude.toFixed(6)}, Lng: ${pos.coords.longitude.toFixed(6)}`
         );
-
         this.position.set(pos);
-
         if (pos.coords.accuracy <= this.accuracyThreshold) {
-          if (this.status() !== 'tracking') {
-            this.status.set('tracking');
-            console.log(`✅ GPS acquired! Accuracy now ${Math.round(pos.coords.accuracy)}m`);
-          }
+          if (this.status() !== 'tracking') this.status.set('tracking');
         } else {
-          if (this.status() !== 'low-accuracy') {
-            this.status.set('low-accuracy');
-          }
+          if (this.status() !== 'low-accuracy') this.status.set('low-accuracy');
         }
       },
       (err) => {
         console.error(`❌ Watch error (${err.code}):`, err.message);
         this.handleLocationError(err);
       },
-      {
-        enableHighAccuracy: true,
-        timeout: 30000,
-        maximumAge: 5000,
-      }
+      { enableHighAccuracy: true, timeout: 30000, maximumAge: 5000 }
     );
   }
 
@@ -173,6 +214,7 @@ export class LocationService {
         BackgroundGeolocation.removeWatcher({ id: this.nativeWatcherId });
         this.nativeWatcherId = null;
       }
+      LocationBuffer.stopBuffering().catch(() => {});
     } else {
       if (this.watchId !== null) {
         navigator.geolocation.clearWatch(this.watchId);
@@ -184,15 +226,15 @@ export class LocationService {
 
   private handleLocationError(err: GeolocationPositionError): void {
     switch (err.code) {
-      case 1: // PERMISSION_DENIED
+      case 1:
         console.error('❌ User denied geolocation permission');
         this.status.set('denied');
         break;
-      case 2: // POSITION_UNAVAILABLE
+      case 2:
         console.error('❌ GPS is unavailable - check if GPS is enabled on your device');
         this.status.set('error');
         break;
-      case 3: // TIMEOUT
+      case 3:
         console.error('❌ Geolocation timeout - check GPS signal or move outside');
         this.status.set('error');
         break;
