@@ -28,6 +28,9 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
   private readonly TILE_SIZE_DEGREES_LAT = this.progressService.TILE_SIZE_DEGREES_LAT;
 
   locationStatus = this.locationService.status;
+  locationUpdateCount = signal(0);
+  lastUpdateTime = signal<string>('—');
+  lastAccuracy = signal<number | null>(null);
   
   userName = computed(() => {
     const email = this.authService.currentUser()?.email;
@@ -48,6 +51,12 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
   constructor() {
     effect(() => {
       const pos = this.locationService.position();
+      if (pos) {
+        this.locationUpdateCount.update(n => n + 1);
+        const d = new Date(pos.timestamp);
+        this.lastUpdateTime.set(`${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}:${d.getSeconds().toString().padStart(2,'0')}`);
+        this.lastAccuracy.set(Math.round(pos.coords.accuracy));
+      }
       if (pos && this.isMapInitialized()) {
         const newPoint: [number, number] = [pos.coords.latitude, pos.coords.longitude];
     
