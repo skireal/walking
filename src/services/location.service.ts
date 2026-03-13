@@ -83,7 +83,7 @@ export class LocationService {
             location.latitude,
             location.longitude,
             location.accuracy,
-            location.time,
+            location.time ?? Date.now(),
             location.bearing ?? null,
             location.speed ?? null,
             location.altitude ?? null,
