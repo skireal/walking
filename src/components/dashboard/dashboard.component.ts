@@ -3,6 +3,8 @@ import { CommonModule } from '@angular/common';
 import { LocationService } from '../../services/location.service';
 import { ProgressService } from '../../services/progress.service';
 import { AuthService } from '../../services/auth.service';
+import { LogService } from '../../services/log.service';
+import { LogViewerComponent } from '../log-viewer/log-viewer.component';
 
 // Leaflet is loaded globally via CDN
 declare var L: any;
@@ -11,12 +13,13 @@ declare var L: any;
   selector: 'app-dashboard',
   templateUrl: './dashboard.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule]
+  imports: [CommonModule, LogViewerComponent]
 })
 export class DashboardComponent implements AfterViewInit, OnDestroy {
   private locationService = inject(LocationService);
   private progressService = inject(ProgressService);
   private authService = inject(AuthService);
+  readonly logService = inject(LogService); // инициализирует перехват console сразу
 
   discoveredTiles = this.progressService.discoveredTilesCount;
   

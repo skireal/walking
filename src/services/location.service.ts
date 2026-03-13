@@ -51,15 +51,18 @@ export class LocationService {
     this.status.set('initializing');
 
     // Запускаем буферизацию координат на нативной стороне
-    LocationBuffer.startBuffering().catch((err: unknown) => {
-      console.warn('⚠️ LocationBuffer.startBuffering failed:', err);
-    });
+    console.log('🚀 [LocationService] Starting native location buffer...');
+    LocationBuffer.startBuffering()
+      .then(() => console.log('✅ [LocationBuffer] startBuffering OK'))
+      .catch((err: unknown) => console.warn('⚠️ [LocationBuffer] startBuffering FAILED:', err));
 
     // Подписываемся на resume — читаем накопленный буфер
     App.addListener('resume', () => {
+      console.log('📱 [App] resumed — flushing location buffer...');
       this.flushLocationBuffer();
     });
 
+    console.log('🛰️ [BackgroundGeolocation] Adding watcher...');
     BackgroundGeolocation.addWatcher(
       {
         backgroundMessage: 'Walker отслеживает ваш маршрут',
@@ -70,11 +73,12 @@ export class LocationService {
       },
       (location: Location | undefined, error: CallbackError | undefined) => {
         if (error) {
-          console.error('❌ Background geolocation error:', error);
+          console.error('❌ [BackgroundGeolocation] error:', JSON.stringify(error));
           this.status.set(error.code === 'NOT_AUTHORIZED' ? 'denied' : 'error');
           return;
         }
         if (location) {
+          console.log(`📍 [BGGeo] lat=${location.latitude.toFixed(6)} lng=${location.longitude.toFixed(6)} acc=${Math.round(location.accuracy)}m`);
           this.applyLocation(
             location.latitude,
             location.longitude,
@@ -88,8 +92,9 @@ export class LocationService {
       }
     ).then((id: string) => {
       this.nativeWatcherId = id;
+      console.log(`✅ [BackgroundGeolocation] watcher started, id=${id}`);
     }).catch((err: unknown) => {
-      console.error('❌ Failed to start background geolocation:', err);
+      console.error('❌ [BackgroundGeolocation] Failed to start:', err);
       this.status.set('error');
     });
   }
@@ -99,10 +104,11 @@ export class LocationService {
     try {
       const { locations } = await LocationBuffer.getAndClearBuffer();
       const parsed: BufferedLocation[] = JSON.parse(locations);
+      console.log(`📦 [LocationBuffer] flushing ${parsed.length} buffered locations`);
       if (parsed.length === 0) return;
 
-      console.log(`📦 Flushing ${parsed.length} buffered locations`);
       for (const loc of parsed) {
+        console.log(`  → lat=${loc.latitude.toFixed(6)} lng=${loc.longitude.toFixed(6)} acc=${Math.round(loc.accuracy)}m t=${new Date(loc.time).toISOString()}`);
         this.applyLocation(
           loc.latitude,
           loc.longitude,
@@ -114,7 +120,7 @@ export class LocationService {
         );
       }
     } catch (err) {
-      console.warn('⚠️ Failed to flush location buffer:', err);
+      console.warn('⚠️ [LocationBuffer] flush failed:', err);
     }
   }
 
