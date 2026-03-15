@@ -80,7 +80,6 @@ export class LocationService {
           return;
         }
         if (location) {
-          console.log(`📍 [BGGeo] lat=${location.latitude.toFixed(6)} lng=${location.longitude.toFixed(6)} acc=${Math.round(location.accuracy)}m`);
           this.applyLocation(
             location.latitude,
             location.longitude,
