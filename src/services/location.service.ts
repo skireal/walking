@@ -113,20 +113,32 @@ export class LocationService {
       if (parsed.length === 0) return;
 
       let newTiles = 0;
+      let skippedAccuracy = 0;
+      const tilesBefore = this.progressService.visitedTiles().size;
+
       for (const loc of parsed) {
         const pos = this.buildPosition(loc.latitude, loc.longitude, loc.accuracy, loc.time, loc.bearing ?? null, loc.speed ?? null, loc.altitude ?? null);
         if (loc.accuracy <= this.accuracyThreshold) {
           const before = this.progressService.visitedTiles().size;
           this.progressService.updatePosition(pos);
           if (this.progressService.visitedTiles().size > before) newTiles++;
+        } else {
+          skippedAccuracy++;
         }
       }
+
+      const tilesAfter = this.progressService.visitedTiles().size;
 
       // Обновляем сигнал позиции последней точкой — для маркера на карте
       const last = parsed[parsed.length - 1];
       this.applyLocation(last.latitude, last.longitude, last.accuracy, last.time, last.bearing ?? null, last.speed ?? null, last.altitude ?? null);
 
-      console.log(`✅ [LocationBuffer] flush complete — ${newTiles} new tiles discovered`);
+      console.log(
+        `✅ [LocationBuffer] flush complete — total: ${parsed.length} | ` +
+        `low-accuracy skipped: ${skippedAccuracy} | ` +
+        `sent to progress: ${parsed.length - skippedAccuracy} | ` +
+        `new tiles: ${newTiles} | tiles: ${tilesBefore} → ${tilesAfter}`
+      );
     } catch (err) {
       console.warn('⚠️ [LocationBuffer] flush failed:', err);
     }

@@ -127,7 +127,7 @@ export class ProgressService {
 
         // If movement is insignificant, do nothing.
         if (distanceChange < MIN_DISTANCE_THRESHOLD_METERS) {
-            return;
+            return; // logged in bulk by caller if needed
         }
       } catch (e) {
         console.error('🗺️ [Progress] distance calc error:', e);
