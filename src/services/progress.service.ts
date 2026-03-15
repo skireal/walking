@@ -118,10 +118,12 @@ export class ProgressService {
             return;
         }
       } catch (e) {
-        console.error('Error calculating distance with Leaflet:', e);
+        console.error('🗺️ [Progress] distance calc error:', e);
       }
+    } else if (!this.lastPosition) {
+      console.log(`🗺️ [Progress] first position received, L available: ${typeof L !== 'undefined'}`);
     }
-    
+
     this.lastPosition = pos;
 
     // Update the discovered tile if it's a new one
@@ -132,6 +134,7 @@ export class ProgressService {
         newTiles.add(currentTileId);
         return newTiles;
       });
+      console.log(`🟩 [Progress] new tile: ${currentTileId} (total: ${this.visitedTiles().size})`);
     }
 
     // Save progress (this is debounced)
@@ -224,9 +227,12 @@ export class ProgressService {
   private async saveToFirestore(): Promise<void> {
     const user = this.authService.currentUser();
     if (!user || !this.db) {
+      console.warn(`💾 [Progress] saveToFirestore skipped — user: ${!!user}, db: ${!!this.db}`);
       return;
     }
 
+    const tileCount = this.visitedTiles().size;
+    console.log(`💾 [Progress] saving ${tileCount} tiles to Firestore...`);
     try {
       const data: ProgressData = {
         visitedTiles: Array.from(this.visitedTiles()),
@@ -234,8 +240,9 @@ export class ProgressService {
       };
       const progressDocRef = doc(this.db, 'users', user.uid, 'progress', 'main');
       await setDoc(progressDocRef, data, { merge: true });
+      console.log(`✅ [Progress] saved ${tileCount} tiles to Firestore`);
     } catch (e) {
-      console.error('Error saving progress to Firestore', e);
+      console.error('❌ [Progress] Firestore save FAILED:', e);
     }
   }
 

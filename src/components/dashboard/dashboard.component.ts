@@ -79,8 +79,8 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
     });
     
     effect(() => {
-        // Rerun when visitedTiles changes
-        this.progressService.visitedTiles(); 
+        const tiles = this.progressService.visitedTiles();
+        console.log(`🗺️ [Dashboard] visitedTiles changed → ${tiles.size} tiles, map ready: ${this.isMapInitialized()}`);
         if (this.isMapInitialized()) {
             this.updateFogGrid();
         }
