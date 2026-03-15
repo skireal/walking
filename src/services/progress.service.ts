@@ -84,8 +84,20 @@ export class ProgressService {
             if (docSnap.exists()) {
               const data = docSnap.data() as ProgressData;
               untracked(() => {
-                this.visitedTiles.set(new Set(data.visitedTiles || []));
-                this.unlockedAchievements.set(new Set(data.unlockedAchievements || []));
+                // Merge incoming tiles with local ones — never overwrite local data.
+                // This prevents a race where Firestore reconnects after app resume
+                // and overwrites tiles that were just flushed from the location buffer.
+                this.visitedTiles.update(existing => {
+                  const merged = new Set(existing);
+                  (data.visitedTiles || []).forEach((t: string) => merged.add(t));
+                  console.log(`☁️ [Progress] Firestore snapshot: ${data.visitedTiles?.length ?? 0} cloud tiles merged → total ${merged.size}`);
+                  return merged;
+                });
+                this.unlockedAchievements.update(existing => {
+                  const merged = new Set(existing);
+                  (data.unlockedAchievements || []).forEach((a: string) => merged.add(a));
+                  return merged;
+                });
               });
             }
           },
