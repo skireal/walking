@@ -3,6 +3,7 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 import { App } from '@capacitor/app';
 import type { BackgroundGeolocationPlugin, Location, CallbackError } from '@capacitor-community/background-geolocation';
 import { LocationBuffer, type BufferedLocation } from '../plugins/location-buffer.plugin';
+import { ProgressService } from './progress.service';
 
 const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>('BackgroundGeolocation');
 
@@ -18,6 +19,7 @@ export class LocationService {
   private nativeWatcherId: string | null = null;
   private accuracyThreshold = 50; // Минимальная точность: 50 метров
   private destroyRef = inject(DestroyRef);
+  private progressService = inject(ProgressService);
 
   constructor() {
     // Следим за точностью позиции
@@ -99,7 +101,10 @@ export class LocationService {
     });
   }
 
-  // Читает буфер накопленных координат и применяет их по одной
+  // Читает буфер накопленных координат и применяет их по одной.
+  // Важно: progressService.updatePosition() вызывается напрямую для каждой точки,
+  // минуя сигнал position — иначе Angular батчит 196 set() в один effect-вызов
+  // и записывается только последний тайл.
   private async flushLocationBuffer(): Promise<void> {
     try {
       const { locations } = await LocationBuffer.getAndClearBuffer();
@@ -107,21 +112,35 @@ export class LocationService {
       console.log(`📦 [LocationBuffer] flushing ${parsed.length} buffered locations`);
       if (parsed.length === 0) return;
 
+      let newTiles = 0;
       for (const loc of parsed) {
-        console.log(`  → lat=${loc.latitude.toFixed(6)} lng=${loc.longitude.toFixed(6)} acc=${Math.round(loc.accuracy)}m t=${new Date(loc.time).toISOString()}`);
-        this.applyLocation(
-          loc.latitude,
-          loc.longitude,
-          loc.accuracy,
-          loc.time,
-          loc.bearing ?? null,
-          loc.speed ?? null,
-          loc.altitude ?? null,
-        );
+        const pos = this.buildPosition(loc.latitude, loc.longitude, loc.accuracy, loc.time, loc.bearing ?? null, loc.speed ?? null, loc.altitude ?? null);
+        if (loc.accuracy <= this.accuracyThreshold) {
+          const before = this.progressService.visitedTiles().size;
+          this.progressService.updatePosition(pos);
+          if (this.progressService.visitedTiles().size > before) newTiles++;
+        }
       }
+
+      // Обновляем сигнал позиции последней точкой — для маркера на карте
+      const last = parsed[parsed.length - 1];
+      this.applyLocation(last.latitude, last.longitude, last.accuracy, last.time, last.bearing ?? null, last.speed ?? null, last.altitude ?? null);
+
+      console.log(`✅ [LocationBuffer] flush complete — ${newTiles} new tiles discovered`);
     } catch (err) {
       console.warn('⚠️ [LocationBuffer] flush failed:', err);
     }
+  }
+
+  // Строит объект GeolocationPosition из сырых значений
+  private buildPosition(
+    latitude: number, longitude: number, accuracy: number, time: number,
+    heading: number | null, speed: number | null, altitude: number | null,
+  ): GeolocationPosition {
+    return {
+      coords: { latitude, longitude, accuracy, altitude, altitudeAccuracy: null, heading, speed },
+      timestamp: time,
+    } as GeolocationPosition;
   }
 
   // Общий метод — применяет одну координату к сигналу позиции
@@ -134,18 +153,7 @@ export class LocationService {
     speed: number | null,
     altitude: number | null,
   ): void {
-    const pos = {
-      coords: {
-        latitude,
-        longitude,
-        accuracy,
-        altitude,
-        altitudeAccuracy: null,
-        heading,
-        speed,
-      },
-      timestamp: time,
-    } as GeolocationPosition;
+    const pos = this.buildPosition(latitude, longitude, accuracy, time, heading, speed, altitude);
 
     this.position.set(pos);
 
