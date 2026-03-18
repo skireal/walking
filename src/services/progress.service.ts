@@ -147,10 +147,9 @@ export class ProgressService {
         return newTiles;
       });
       console.log(`🟩 [Progress] new tile: ${currentTileId} (total: ${this.visitedTiles().size})`);
+      // Save only when tiles actually change — no point saving stale data
+      this.saveProgress();
     }
-
-    // Save progress (this is debounced)
-    this.saveProgress();
   }
 
   unlockAchievement(achievementId: string): void {
@@ -243,16 +242,23 @@ export class ProgressService {
       return;
     }
 
-    const tileCount = this.visitedTiles().size;
+    // Snapshot tiles NOW — before any async gap where new tiles might be added
+    const tilesToSave = Array.from(this.visitedTiles());
+    const tileCount = tilesToSave.length;
     console.log(`💾 [Progress] saving ${tileCount} tiles to Firestore...`);
     try {
       const data: ProgressData = {
-        visitedTiles: Array.from(this.visitedTiles()),
+        visitedTiles: tilesToSave,
         unlockedAchievements: Array.from(this.unlockedAchievements()),
       };
       const progressDocRef = doc(this.db, 'users', user.uid, 'progress', 'main');
       await setDoc(progressDocRef, data, { merge: true });
       console.log(`✅ [Progress] saved ${tileCount} tiles to Firestore`);
+      // If tiles were added while save was in-flight, schedule another save
+      if (this.visitedTiles().size > tileCount) {
+        console.log(`🔄 [Progress] ${this.visitedTiles().size - tileCount} new tiles added during save → re-saving`);
+        this.saveProgress();
+      }
     } catch (e) {
       console.error('❌ [Progress] Firestore save FAILED:', e);
     }

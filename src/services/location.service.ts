@@ -17,7 +17,8 @@ export class LocationService {
   status = signal<LocationStatus>('idle');
   private watchId: number | null = null;
   private nativeWatcherId: string | null = null;
-  private accuracyThreshold = 50; // Минимальная точность: 50 метров
+  private accuracyThreshold = 50;
+  private lastGpsAcquiredLog = 0; // Минимальная точность: 50 метров
   private destroyRef = inject(DestroyRef);
   private progressService = inject(ProgressService);
 
@@ -171,7 +172,11 @@ export class LocationService {
     if (accuracy <= this.accuracyThreshold) {
       if (this.status() !== 'tracking') {
         this.status.set('tracking');
-        console.log(`✅ GPS acquired! Accuracy: ${Math.round(accuracy)}m`);
+        const now = Date.now();
+        if (now - this.lastGpsAcquiredLog > 5000) {
+          this.lastGpsAcquiredLog = now;
+          console.log(`✅ GPS acquired! Accuracy: ${Math.round(accuracy)}m`);
+        }
       }
     } else {
       if (this.status() !== 'low-accuracy') {
