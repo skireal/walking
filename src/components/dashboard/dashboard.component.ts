@@ -114,7 +114,30 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
   private createFogLayer(): any {
     const ps = this.progressService;
 
+    // Row index: wy → wx[] — rebuilt once per redraw, used by all createTile calls.
+    // Avoids iterating millions of empty positions at low zoom levels.
+    let rowIndex = new Map<number, number[]>();
+
+    function rebuildIndex(visited: Set<string>): void {
+      const idx = new Map<number, number[]>();
+      for (const id of visited) {
+        const comma = id.indexOf(',');
+        const wx = parseInt(id.slice(0, comma));
+        const wy = parseInt(id.slice(comma + 1));
+        if (!idx.has(wy)) idx.set(wy, []);
+        idx.get(wy)!.push(wx);
+      }
+      rowIndex = idx;
+    }
+
+    rebuildIndex(ps.visitedTiles());
+
     const FogLayer = (L.GridLayer as any).extend({
+      redraw() {
+        rebuildIndex(ps.visitedTiles());
+        return (L.GridLayer as any).prototype.redraw.call(this);
+      },
+
       createTile(coords: { x: number; y: number; z: number }): HTMLCanvasElement {
         const SIZE = 256;
         const canvas = document.createElement('canvas');
@@ -146,22 +169,25 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
         ctx.fillStyle = 'rgba(17, 24, 39, 0.75)';
         ctx.fillRect(0, 0, SIZE, SIZE);
 
-        // Punch holes for visited walker tiles
+        // Punch holes for visited walker tiles using row index —
+        // only iterates rows that actually contain visited tiles.
         ctx.globalCompositeOperation = 'destination-out';
         const TLAT = ps.TILE_SIZE_DEGREES_LAT;
-        const visited = ps.visitedTiles();
 
         const startWY = Math.floor(south / TLAT) - 1;
         const endWY   = Math.ceil(north / TLAT)  + 1;
 
         for (let wy = startWY; wy <= endWY; wy++) {
+          const wxList = rowIndex.get(wy);
+          if (!wxList) continue; // no visited tiles in this row — skip
+
           const rowLat = (wy + 0.5) * TLAT;
           const tLng   = ps.getTileLngSizeAtLat(rowLat);
           const startWX = Math.floor(west / tLng) - 1;
           const endWX   = Math.ceil(east / tLng)  + 1;
 
-          for (let wx = startWX; wx <= endWX; wx++) {
-            if (!visited.has(`${wx},${wy}`)) continue;
+          for (const wx of wxList) {
+            if (wx < startWX || wx > endWX) continue;
 
             const px1 = Math.floor(lngToPx(wx * tLng));
             const px2 = Math.ceil(lngToPx((wx + 1) * tLng));
