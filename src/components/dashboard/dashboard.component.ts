@@ -27,8 +27,7 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
   private isMapInitialized = signal(false);
   private userMarker: any;
   
-  private fogGridLayer: any;
-  private readonly TILE_SIZE_DEGREES_LAT = this.progressService.TILE_SIZE_DEGREES_LAT;
+  private fogLayer: any;
 
   locationStatus = this.locationService.status;
   locationUpdateCount = signal(0);
@@ -82,7 +81,7 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
         const tiles = this.progressService.visitedTiles();
         console.log(`🗺️ [Dashboard] visitedTiles changed → ${tiles.size} tiles, map ready: ${this.isMapInitialized()}`);
         if (this.isMapInitialized()) {
-            this.updateFogGrid();
+            this.fogLayer?.redraw();
         }
     });
   }
@@ -106,63 +105,78 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
       maxZoom: 20
     }).addTo(this.map);
 
-    this.fogGridLayer = L.layerGroup().addTo(this.map);
-    this.map.on('moveend', () => this.updateFogGrid());
+    this.fogLayer = this.createFogLayer().addTo(this.map);
 
     this.locationService.startWatching();
     this.isMapInitialized.set(true);
-
-    this.updateFogGrid();
   }
 
-  private updateFogGrid(): void {
-    if (!this.map) return;
+  private createFogLayer(): any {
+    const ps = this.progressService;
 
-    try {
-      if (this.map.getZoom() < 16) {
-        this.fogGridLayer.clearLayers();
-        return;
-      }
+    const FogLayer = (L.GridLayer as any).extend({
+      createTile(coords: { x: number; y: number; z: number }): HTMLCanvasElement {
+        const SIZE = 256;
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = SIZE;
+        const ctx = canvas.getContext('2d')!;
 
-      this.fogGridLayer.clearLayers();
-      const bounds = this.map.getBounds();
-      const visitedTiles = this.progressService.visitedTiles();
+        // Tile coords → geographic bounds (Web Mercator)
+        const tileToLng = (tx: number, z: number) => (tx / 2 ** z) * 360 - 180;
+        const tileToLat = (ty: number, z: number) => {
+          const n = Math.PI - (2 * Math.PI * ty) / 2 ** z;
+          return (180 / Math.PI) * Math.atan(Math.sinh(n));
+        };
+        const mercY = (lat: number) =>
+          Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360));
 
-      const northEast = bounds.getNorthEast();
-      const southWest = bounds.getSouthWest();
+        const west  = tileToLng(coords.x,     coords.z);
+        const east  = tileToLng(coords.x + 1, coords.z);
+        const north = tileToLat(coords.y,     coords.z);
+        const south = tileToLat(coords.y + 1, coords.z);
 
-      const startY = Math.floor(southWest.lat / this.TILE_SIZE_DEGREES_LAT) - 1;
-      const endY = Math.floor(northEast.lat / this.TILE_SIZE_DEGREES_LAT) + 1;
+        const mNorth = mercY(north);
+        const mRange = mercY(south) - mNorth; // negative
+        const lngRange = east - west;
 
-      for (let y = startY; y <= endY; y++) {
-          const rowLat = (y + 0.5) * this.TILE_SIZE_DEGREES_LAT;
-          const tileSizeLng = this.progressService.getTileLngSizeAtLat(rowLat);
+        const lngToPx = (lng: number) => ((lng - west) / lngRange) * SIZE;
+        const latToPy = (lat: number) => ((mercY(lat) - mNorth) / mRange) * SIZE;
 
-          const startX = Math.floor(southWest.lng / tileSizeLng) - 1;
-          const endX = Math.floor(northEast.lng / tileSizeLng) + 1;
+        // Fill entire tile with fog
+        ctx.fillStyle = 'rgba(17, 24, 39, 0.75)';
+        ctx.fillRect(0, 0, SIZE, SIZE);
 
-          for (let x = startX; x <= endX; x++) {
-              const tileId = `${x},${y}`;
+        // Punch holes for visited walker tiles
+        ctx.globalCompositeOperation = 'destination-out';
+        const TLAT = ps.TILE_SIZE_DEGREES_LAT;
+        const visited = ps.visitedTiles();
 
-              if (!visitedTiles.has(tileId)) {
-                  const tileBounds = [
-                      [y * this.TILE_SIZE_DEGREES_LAT, x * tileSizeLng],
-                      [(y + 1) * this.TILE_SIZE_DEGREES_LAT, (x + 1) * tileSizeLng]
-                  ];
+        const startWY = Math.floor(south / TLAT) - 1;
+        const endWY   = Math.ceil(north / TLAT)  + 1;
 
-                  L.rectangle(tileBounds, {
-                      color: '#374151',
-                      weight: 0.5,
-                      fillColor: '#111827',
-                      fillOpacity: 0.7,
-                      interactive: false,
-                  }).addTo(this.fogGridLayer);
-              }
+        for (let wy = startWY; wy <= endWY; wy++) {
+          const rowLat = (wy + 0.5) * TLAT;
+          const tLng   = ps.getTileLngSizeAtLat(rowLat);
+          const startWX = Math.floor(west / tLng) - 1;
+          const endWX   = Math.ceil(east / tLng)  + 1;
+
+          for (let wx = startWX; wx <= endWX; wx++) {
+            if (!visited.has(`${wx},${wy}`)) continue;
+
+            const px1 = Math.floor(lngToPx(wx * tLng));
+            const px2 = Math.ceil(lngToPx((wx + 1) * tLng));
+            const py1 = Math.floor(latToPy((wy + 1) * TLAT));
+            const py2 = Math.ceil(latToPy(wy * TLAT));
+
+            ctx.fillRect(px1, py1, Math.max(px2 - px1, 1), Math.max(py2 - py1, 1));
           }
-      }
-    } catch (e) {
-      console.error('Error updating fog grid:', e);
-    }
+        }
+
+        return canvas;
+      },
+    });
+
+    return new FogLayer({ zIndex: 400, opacity: 1 });
   }
   
   recenterMap(): void {
