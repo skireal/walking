@@ -176,7 +176,7 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
       },
     });
 
-    return new FogLayer({ zIndex: 400, opacity: 1 });
+    return new FogLayer({ zIndex: 400, opacity: 1, updateWhenZooming: false });
   }
   
   recenterMap(): void {
