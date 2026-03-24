@@ -104,6 +104,7 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
   private initMap(): void {
     this.map = L.map('map', {
       zoomControl: false,
+      minZoom: 3,
     }).setView([51.5074, -0.1278], 13); // Default to London
 
     L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
