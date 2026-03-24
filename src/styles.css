@@ -54,6 +54,18 @@ body {
 .splash__logo .d4 { animation: splashPulse4 2.1s ease-in-out infinite 0.4s; }
 .splash__logo .d5 { animation: splashPulse5 2.5s ease-in-out infinite 0.2s; }
 
+.splash__name {
+  position: absolute;
+  bottom: 60px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: .25em;
+  text-transform: uppercase;
+  color: #374151;
+}
+
 /* ── Leaflet full-screen map support ── */
 .leaflet-container {
   height: 100vh;
