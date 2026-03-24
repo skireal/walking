@@ -28,13 +28,13 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
   private userMarker: any;
 
   private fogLayer: any;
-  private fogOverlay: HTMLDivElement | null = null;
 
   // Zoom performance tracking
   private zoomStartTime = 0;
   private zoomStartLevel = 0;
   private zoomTileCount = 0;
   private zoomTileMs = 0;
+  private zoomLogged = false; // prevent double-log from Leaflet's two zoomstart/zoomend pairs
 
   locationStatus = this.locationService.status;
   locationUpdateCount = signal(0);
@@ -112,35 +112,37 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
       maxZoom: 20
     }).addTo(this.map);
 
-    // Fog overlay: covers map during zoom tile replacement to prevent flicker
-    this.fogOverlay = document.createElement('div');
-    this.fogOverlay.style.cssText = [
-      'position:absolute', 'inset:0', 'z-index:401',
-      'background:rgba(17,24,39,0.75)', 'pointer-events:none',
-      'opacity:0', 'transition:opacity 0.1s'
-    ].join(';');
-    document.getElementById('map')!.appendChild(this.fogOverlay);
-
     this.map.on('zoomstart', () => {
-      this.zoomStartTime = performance.now();
-      this.zoomStartLevel = this.map.getZoom();
-      this.zoomTileCount = 0;
-      this.zoomTileMs = 0;
-      this.fogOverlay!.style.opacity = '1';
-      console.log(`🔍 [Zoom] start z=${this.zoomStartLevel} tiles=${this.progressService.visitedTiles().size}`);
+      if (!this.zoomLogged) {
+        this.zoomStartTime = performance.now();
+        this.zoomStartLevel = this.map.getZoom();
+        this.zoomTileCount = 0;
+        this.zoomTileMs = 0;
+        this.zoomLogged = true;
+        console.log(`🔍 [Zoom] start z=${this.zoomStartLevel} visited=${this.progressService.visitedTiles().size}`);
+      }
     });
 
     this.map.on('zoomend', () => {
-      const animMs = Math.round(performance.now() - this.zoomStartTime);
-      const newZ = this.map.getZoom();
-      // Hide overlay after tiles are painted (one rAF is enough since createTile is sync)
-      requestAnimationFrame(() => {
-        this.fogOverlay!.style.opacity = '0';
-        console.log(`🔍 [Zoom] end z=${this.zoomStartLevel}→${newZ} | anim=${animMs}ms tiles_rendered=${this.zoomTileCount} render_total=${this.zoomTileMs}ms avg=${this.zoomTileCount ? Math.round(this.zoomTileMs / this.zoomTileCount) : 0}ms/tile`);
-      });
+      if (this.zoomLogged) {
+        this.zoomLogged = false;
+        const animMs = Math.round(performance.now() - this.zoomStartTime);
+        const newZ = this.map.getZoom();
+        console.log(`🔍 [Zoom] end z=${this.zoomStartLevel}→${newZ} | total=${animMs}ms tiles=${this.zoomTileCount} render=${Math.round(this.zoomTileMs)}ms avg=${this.zoomTileCount ? Math.round(this.zoomTileMs / this.zoomTileCount) : 0}ms/tile`);
+      }
     });
 
     this.fogLayer = this.createFogLayer().addTo(this.map);
+
+    // Fix zoom flicker: set fog colour as container background so that when
+    // Leaflet briefly removes old tiles before inserting new ones, the
+    // container background shows the fog colour instead of revealing the map.
+    requestAnimationFrame(() => {
+      const container = this.fogLayer.getContainer?.();
+      if (container) {
+        container.style.background = 'rgba(17, 24, 39, 0.75)';
+      }
+    });
 
     this.locationService.startWatching();
     this.isMapInitialized.set(true);
