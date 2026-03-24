@@ -1,9 +1,9 @@
-import { Injectable, signal, computed, inject, effect, DestroyRef } from '@angular/core';
+import { Injectable, signal, computed, inject, DestroyRef } from '@angular/core';
 import { initializeApp, getApp, getApps, type FirebaseApp } from 'firebase/app';
 import {
-  initializeAuth,
-  indexedDBLocalPersistence,
+  getAuth,
   browserLocalPersistence,
+  setPersistence,
   type Auth,
   onAuthStateChanged,
   type User,
@@ -12,10 +12,10 @@ import {
   signOut,
   GoogleAuthProvider,
   signInWithPopup,
-  signInWithRedirect,
-  getRedirectResult,
+  signInWithCredential,
 } from 'firebase/auth';
 import { Capacitor } from '@capacitor/core';
+import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 
 import { firebaseConfig } from '../env';
 
@@ -68,8 +68,8 @@ export class AuthService {
   private initializeFirebase(): void {
     try {
       if (!firebaseConfig || !firebaseConfig.apiKey) {
-        console.warn('Firebase config not found (env vars missing). App running in offline mode.');
-        this.resolveAuthState(); // Resolve auth state if Firebase is not configured
+        console.warn('Firebase config not found. App running in offline mode.');
+        this.resolveAuthState();
         return;
       }
 
@@ -79,32 +79,33 @@ export class AuthService {
         this.app = getApp();
       }
 
-      // initializeAuth с явным массивом persistence гарантирует правильное хранилище
-      // ещё ДО первого обращения к Auth — IndexedDB надёжнее на Android WebView (Capacitor),
-      // localStorage как fallback для браузера.
-      this.auth = initializeAuth(this.app, {
-        persistence: [indexedDBLocalPersistence, browserLocalPersistence],
-      });
+      this.auth = getAuth(this.app);
 
       this.setupAuthStateObserver();
       this.isFirebaseReadySignal.set(true);
     } catch (error) {
       console.error('Firebase initialization error:', error);
       this.isFirebaseReadySignal.set(false);
-      this.resolveAuthState(); // Resolve auth state on initialization error
+      this.resolveAuthState();
     }
   }
 
-  private setupAuthStateObserver(): void {
+  private async setupAuthStateObserver(): Promise<void> {
     if (!this.auth) {
       this.resolveAuthState();
       return;
     }
 
+    try {
+      await setPersistence(this.auth, browserLocalPersistence);
+    } catch (error) {
+      console.warn('Failed to set auth persistence:', error);
+    }
+
     this.authUnsubscribe = onAuthStateChanged(this.auth, (user) => {
       this.currentUser.set(user);
       this.authStateChanged.set({ user, isLoggedIn: !!user });
-      this.resolveAuthState(); // This resolves the promise on the first auth state check
+      this.resolveAuthState();
     });
   }
 
@@ -122,13 +123,18 @@ export class AuthService {
 
   async loginWithGoogle(): Promise<User> {
     if (!this.auth) throw new Error('Auth service not initialized.');
-    const provider = new GoogleAuthProvider();
+
     if (Capacitor.isNativePlatform()) {
-      await signInWithRedirect(this.auth, provider);
-      const result = await getRedirectResult(this.auth);
-      if (!result) throw new Error('Google sign-in was cancelled.');
-      return result.user;
+      // Native: get Google ID token via plugin, then sign into Firebase web SDK
+      const result = await FirebaseAuthentication.signInWithGoogle();
+      if (!result.credential?.idToken) {
+        throw new Error('Google sign-in failed: no ID token returned.');
+      }
+      const credential = GoogleAuthProvider.credential(result.credential.idToken);
+      const userCredential = await signInWithCredential(this.auth, credential);
+      return userCredential.user;
     } else {
+      const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(this.auth, provider);
       return result.user;
     }
@@ -136,6 +142,9 @@ export class AuthService {
 
   async logout(): Promise<void> {
     if (!this.auth) throw new Error('Auth service not initialized.');
+    if (Capacitor.isNativePlatform()) {
+      await FirebaseAuthentication.signOut();
+    }
     await signOut(this.auth);
   }
 
@@ -144,6 +153,8 @@ export class AuthService {
   }
 
   public waitForAuth(): Promise<void> {
-    return this.authStateResolved;
+    // 5s timeout so the app never hangs on a dark screen if auth stalls
+    const timeout = new Promise<void>(resolve => setTimeout(resolve, 5000));
+    return Promise.race([this.authStateResolved, timeout]);
   }
 }
