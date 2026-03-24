@@ -143,7 +143,8 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
     const ps = this.progressService;
     const self = this;
 
-    // Row index: wy → wx[] rebuilt once per redraw for O(visited) rendering
+    // Row index: wy → wx[] — rebuilt once per redraw, used by all createTile calls.
+    // Avoids iterating millions of empty positions at low zoom levels.
     let rowIndex = new Map<number, number[]>();
 
     function rebuildIndex(visited: Set<string>): void {
@@ -160,54 +161,47 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
 
     rebuildIndex(ps.visitedTiles());
 
-    // Single persistent canvas — never removed, just redrawn after each
-    // zoom/pan. Eliminates the tile-replacement flicker of GridLayer.
-    const canvas = document.createElement('canvas');
-    canvas.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;z-index:400';
-
-    const FogLayer = (L.Layer as any).extend({
-      onAdd(map: any) {
-        map.getPanes().overlayPane.appendChild(canvas);
-        map.on('moveend zoomend viewreset resize', this._draw, this);
-        this._draw();
-      },
-
-      onRemove(map: any) {
-        map.getPanes().overlayPane.removeChild(canvas);
-        map.off('moveend zoomend viewreset resize', this._draw, this);
-      },
-
+    const FogLayer = (L.GridLayer as any).extend({
       redraw() {
         rebuildIndex(ps.visitedTiles());
-        this._draw();
-        return this;
+        return (L.GridLayer as any).prototype.redraw.call(this);
       },
 
-      _draw() {
-        const map = self.map;
-        if (!map) return;
-
+      createTile(coords: { x: number; y: number; z: number }): HTMLCanvasElement {
         const t0 = performance.now();
-        const size = map.getSize();
-        canvas.width  = size.x;
-        canvas.height = size.y;
-
-        // Align canvas with the overlay pane's current transform origin
-        const topLeft = map.containerPointToLayerPoint([0, 0]);
-        L.DomUtil.setPosition(canvas, topLeft);
-
+        const SIZE = 256;
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = SIZE;
         const ctx = canvas.getContext('2d')!;
+
+        // Tile coords → geographic bounds (Web Mercator)
+        const tileToLng = (tx: number, z: number) => (tx / 2 ** z) * 360 - 180;
+        const tileToLat = (ty: number, z: number) => {
+          const n = Math.PI - (2 * Math.PI * ty) / 2 ** z;
+          return (180 / Math.PI) * Math.atan(Math.sinh(n));
+        };
+        const mercY = (lat: number) =>
+          Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360));
+
+        const west  = tileToLng(coords.x,     coords.z);
+        const east  = tileToLng(coords.x + 1, coords.z);
+        const north = tileToLat(coords.y,     coords.z);
+        const south = tileToLat(coords.y + 1, coords.z);
+
+        const mNorth = mercY(north);
+        const mRange = mercY(south) - mNorth;
+        const lngRange = east - west;
+
+        const lngToPx = (lng: number) => ((lng - west) / lngRange) * SIZE;
+        const latToPy = (lat: number) => ((mercY(lat) - mNorth) / mRange) * SIZE;
+
+        // Fill entire tile with fog
         ctx.fillStyle = 'rgba(17,24,39,0.75)';
-        ctx.fillRect(0, 0, size.x, size.y);
+        ctx.fillRect(0, 0, SIZE, SIZE);
 
+        // Punch holes for visited walker tiles using row index
         ctx.globalCompositeOperation = 'destination-out';
-
         const TLAT = ps.TILE_SIZE_DEGREES_LAT;
-        const bounds = map.getBounds();
-        const south = bounds.getSouth();
-        const north = bounds.getNorth();
-        const west  = bounds.getWest();
-        const east  = bounds.getEast();
 
         const startWY = Math.floor(south / TLAT) - 1;
         const endWY   = Math.ceil(north / TLAT)  + 1;
@@ -219,32 +213,31 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
 
           const rowLat = (wy + 0.5) * TLAT;
           const tLng   = ps.getTileLngSizeAtLat(rowLat);
-          const startWX = Math.floor(west  / tLng) - 1;
-          const endWX   = Math.ceil(east   / tLng) + 1;
+          const startWX = Math.floor(west / tLng) - 1;
+          const endWX   = Math.ceil(east / tLng)  + 1;
 
           for (const wx of wxList) {
             if (wx < startWX || wx > endWX) continue;
 
-            const sw = map.latLngToContainerPoint(L.latLng(wy * TLAT,       wx * tLng));
-            const ne = map.latLngToContainerPoint(L.latLng((wy + 1) * TLAT, (wx + 1) * tLng));
+            const px1 = Math.floor(lngToPx(wx * tLng));
+            const px2 = Math.ceil(lngToPx((wx + 1) * tLng));
+            const py1 = Math.floor(latToPy((wy + 1) * TLAT));
+            const py2 = Math.ceil(latToPy(wy * TLAT));
 
-            const x = Math.min(sw.x, ne.x);
-            const y = Math.min(sw.y, ne.y);
-            const w = Math.max(Math.abs(ne.x - sw.x), 1);
-            const h = Math.max(Math.abs(ne.y - sw.y), 1);
-
-            ctx.fillRect(x, y, w, h);
+            ctx.fillRect(px1, py1, Math.max(px2 - px1, 1), Math.max(py2 - py1, 1));
             tilesDrawn++;
           }
         }
 
-        const drawMs = Math.round(performance.now() - t0);
-        self.zoomTileCount = tilesDrawn;
-        self.zoomTileMs    = drawMs;
+        const drawMs = performance.now() - t0;
+        self.zoomTileCount += tilesDrawn;
+        self.zoomTileMs    += drawMs;
+
+        return canvas;
       },
     });
 
-    return new FogLayer();
+    return new FogLayer({ zIndex: 400, opacity: 1, updateWhenZooming: false });
   }
   
   recenterMap(): void {
