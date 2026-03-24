@@ -10,7 +10,12 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
 } from 'firebase/auth';
+import { Capacitor } from '@capacitor/core';
 
 import { firebaseConfig } from '../env';
 
@@ -113,6 +118,20 @@ export class AuthService {
     if (!this.auth) throw new Error('Auth service not initialized.');
     const userCredential = await signInWithEmailAndPassword(this.auth, email, password);
     return userCredential.user;
+  }
+
+  async loginWithGoogle(): Promise<User> {
+    if (!this.auth) throw new Error('Auth service not initialized.');
+    const provider = new GoogleAuthProvider();
+    if (Capacitor.isNativePlatform()) {
+      await signInWithRedirect(this.auth, provider);
+      const result = await getRedirectResult(this.auth);
+      if (!result) throw new Error('Google sign-in was cancelled.');
+      return result.user;
+    } else {
+      const result = await signInWithPopup(this.auth, provider);
+      return result.user;
+    }
   }
 
   async logout(): Promise<void> {

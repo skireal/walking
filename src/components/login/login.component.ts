@@ -20,6 +20,19 @@ export class LoginComponent {
   error = signal<string | null>(null);
   isLoading = signal(false);
 
+  async loginWithGoogle(): Promise<void> {
+    this.isLoading.set(true);
+    this.error.set(null);
+    try {
+      await this.authService.loginWithGoogle();
+      this.router.navigate(['/dashboard']);
+    } catch (e: unknown) {
+      this.error.set(e instanceof Error ? e.message : 'Failed to sign in with Google.');
+    } finally {
+      this.isLoading.set(false);
+    }
+  }
+
   async login(): Promise<void> {
     if (!this.email().trim() || !this.password()) {
       this.error.set('Please enter both email and password.');
