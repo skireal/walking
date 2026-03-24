@@ -16,7 +16,7 @@
             "outputPath": "dist/walker",
             "index": "index.html",
             "main": "index.tsx",
-            "baseHref": "/walker/",
+            "baseHref": "/",
             "polyfills": ["zone.js"],
             "tsConfig": "tsconfig.app.json",
             "assets": ["src/assets", "src/manifest.json", "src/sw.js"],

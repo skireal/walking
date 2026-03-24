@@ -26,7 +26,7 @@
 
 1. Собрать Angular-приложение:
    ```bash
-   ng build --base-href /
+   ng build
    ```
 
 2. Синхронизировать с Capacitor:
