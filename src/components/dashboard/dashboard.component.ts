@@ -26,8 +26,15 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
   private map: any;
   private isMapInitialized = signal(false);
   private userMarker: any;
-  
+
   private fogLayer: any;
+  private fogOverlay: HTMLDivElement | null = null;
+
+  // Zoom performance tracking
+  private zoomStartTime = 0;
+  private zoomStartLevel = 0;
+  private zoomTileCount = 0;
+  private zoomTileMs = 0;
 
   locationStatus = this.locationService.status;
   locationUpdateCount = signal(0);
@@ -105,6 +112,34 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
       maxZoom: 20
     }).addTo(this.map);
 
+    // Fog overlay: covers map during zoom tile replacement to prevent flicker
+    this.fogOverlay = document.createElement('div');
+    this.fogOverlay.style.cssText = [
+      'position:absolute', 'inset:0', 'z-index:401',
+      'background:rgba(17,24,39,0.75)', 'pointer-events:none',
+      'opacity:0', 'transition:opacity 0.1s'
+    ].join(';');
+    document.getElementById('map')!.appendChild(this.fogOverlay);
+
+    this.map.on('zoomstart', () => {
+      this.zoomStartTime = performance.now();
+      this.zoomStartLevel = this.map.getZoom();
+      this.zoomTileCount = 0;
+      this.zoomTileMs = 0;
+      this.fogOverlay!.style.opacity = '1';
+      console.log(`🔍 [Zoom] start z=${this.zoomStartLevel} tiles=${this.progressService.visitedTiles().size}`);
+    });
+
+    this.map.on('zoomend', () => {
+      const animMs = Math.round(performance.now() - this.zoomStartTime);
+      const newZ = this.map.getZoom();
+      // Hide overlay after tiles are painted (one rAF is enough since createTile is sync)
+      requestAnimationFrame(() => {
+        this.fogOverlay!.style.opacity = '0';
+        console.log(`🔍 [Zoom] end z=${this.zoomStartLevel}→${newZ} | anim=${animMs}ms tiles_rendered=${this.zoomTileCount} render_total=${this.zoomTileMs}ms avg=${this.zoomTileCount ? Math.round(this.zoomTileMs / this.zoomTileCount) : 0}ms/tile`);
+      });
+    });
+
     this.fogLayer = this.createFogLayer().addTo(this.map);
 
     this.locationService.startWatching();
@@ -113,6 +148,7 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
 
   private createFogLayer(): any {
     const ps = this.progressService;
+    const self = this; // for access to zoomTileCount/zoomTileMs inside FogLayer
 
     // Row index: wy → wx[] — rebuilt once per redraw, used by all createTile calls.
     // Avoids iterating millions of empty positions at low zoom levels.
@@ -139,6 +175,7 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
       },
 
       createTile(coords: { x: number; y: number; z: number }): HTMLCanvasElement {
+        const t0 = performance.now();
         const SIZE = 256;
         const canvas = document.createElement('canvas');
         canvas.width = canvas.height = SIZE;
@@ -197,6 +234,11 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
             ctx.fillRect(px1, py1, Math.max(px2 - px1, 1), Math.max(py2 - py1, 1));
           }
         }
+
+        // Accumulate tile render stats for zoom summary log
+        const renderMs = performance.now() - t0;
+        self.zoomTileCount++;
+        self.zoomTileMs += renderMs;
 
         return canvas;
       },
