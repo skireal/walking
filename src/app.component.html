@@ -1,3 +1,7 @@
+@if (!splashDone()) {
+  <app-splash [hiding]="splashHiding()" />
+}
+
 <div class="h-screen w-screen flex flex-col">
   <main class="flex-1 overflow-y-auto" [class.pb-20]="isLoggedIn()">
     <router-outlet></router-outlet>

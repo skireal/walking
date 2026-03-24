@@ -14,7 +14,47 @@ body {
   color-scheme: dark;
 }
 
-/* Leaflet full-screen map support */
+/* ── Splash screen ── */
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: #111827;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.5s ease, visibility 0.5s ease;
+  opacity: 1;
+  visibility: visible;
+}
+.splash--hiding {
+  opacity: 0;
+  visibility: hidden;
+}
+.splash__logo {
+  width: 140px;
+  height: 140px;
+  margin-top: -48px; /* slightly above center */
+}
+.splash__logo svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* Variant A — independent random pulse */
+@keyframes splashPulse1 { 0%,100%{opacity:.25} 30%{opacity:1}    60%{opacity:.5}  }
+@keyframes splashPulse2 { 0%,100%{opacity:.5}  20%{opacity:.2}   70%{opacity:1}   }
+@keyframes splashPulse3 { 0%,100%{opacity:.8}  45%{opacity:.15}  75%{opacity:.9}  }
+@keyframes splashPulse4 { 0%,100%{opacity:.3}  35%{opacity:.9}   65%{opacity:.2}  }
+@keyframes splashPulse5 { 0%,100%{opacity:.7}  15%{opacity:1}    55%{opacity:.3}  }
+
+.splash__logo .d1 { animation: splashPulse1 2.3s ease-in-out infinite; }
+.splash__logo .d2 { animation: splashPulse2 1.9s ease-in-out infinite; }
+.splash__logo .d3 { animation: splashPulse3 2.7s ease-in-out infinite; }
+.splash__logo .d4 { animation: splashPulse4 2.1s ease-in-out infinite 0.4s; }
+.splash__logo .d5 { animation: splashPulse5 2.5s ease-in-out infinite 0.2s; }
+
+/* ── Leaflet full-screen map support ── */
 .leaflet-container {
   height: 100vh;
   width: 100vw;
