@@ -1,39 +1,43 @@
 <div class="flex items-center justify-center min-h-screen bg-gray-900 px-4">
   <div class="w-full max-w-md space-y-8">
-    <div>
-      <h2 class="mt-6 text-center text-3xl font-extrabold text-white">
-        Welcome Back to Walker
-      </h2>
-      <p class="mt-2 text-center text-sm text-gray-400">
-        Sign in to continue your journey.
-      </p>
+    <div class="flex flex-col items-center gap-3">
+      <svg class="w-16 h-16" viewBox="0 0 192 192" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M 44,59 68,83 44,107 20,83 Z"    fill="#2dd4bf"/>
+        <path d="M 96,59 120,83 96,107 72,83 Z"    fill="#2dd4bf"/>
+        <path d="M 148,59 172,83 148,107 124,83 Z" fill="#2dd4bf"/>
+        <path d="M 70,85 94,109 70,133 46,109 Z"   fill="#2dd4bf"/>
+        <path d="M 122,85 146,109 122,133 98,109 Z" fill="#2dd4bf"/>
+      </svg>
+      <span class="text-xs tracking-[.25em] uppercase text-gray-500">walker</span>
+      <h2 class="mt-2 text-center text-2xl font-bold text-white">Welcome back</h2>
+      <p class="text-center text-sm text-gray-400">Sign in to continue your journey.</p>
     </div>
     <form class="mt-8 space-y-6" (ngSubmit)="login()">
       <div class="rounded-md shadow-sm -space-y-px">
         <div>
           <label for="email-address" class="sr-only">Email address</label>
-          <input 
-            id="email-address" 
-            name="email" 
-            type="email" 
-            autocomplete="email" 
-            required 
+          <input
+            id="email-address"
+            name="email"
+            type="email"
+            autocomplete="email"
+            required
             [ngModel]="email()"
             (ngModelChange)="email.set($event)"
-            class="appearance-none rounded-none relative block w-full px-3 py-3 border border-gray-700 bg-gray-800 text-white placeholder-gray-500 rounded-t-md focus:outline-none focus:ring-teal-500 focus:border-teal-500 focus:z-10 sm:text-sm" 
+            class="appearance-none rounded-none relative block w-full px-3 py-3 border border-gray-700 bg-gray-800 text-white placeholder-gray-500 rounded-t-md focus:outline-none focus:ring-teal-500 focus:border-teal-500 focus:z-10 sm:text-sm"
             placeholder="Email address">
         </div>
         <div>
           <label for="password" class="sr-only">Password</label>
-          <input 
-            id="password" 
-            name="password" 
-            type="password" 
-            autocomplete="current-password" 
-            required 
+          <input
+            id="password"
+            name="password"
+            type="password"
+            autocomplete="current-password"
+            required
             [ngModel]="password()"
             (ngModelChange)="password.set($event)"
-            class="appearance-none rounded-none relative block w-full px-3 py-3 border border-gray-700 bg-gray-800 text-white placeholder-gray-500 rounded-b-md focus:outline-none focus:ring-teal-500 focus:border-teal-500 focus:z-10 sm:text-sm" 
+            class="appearance-none rounded-none relative block w-full px-3 py-3 border border-gray-700 bg-gray-800 text-white placeholder-gray-500 rounded-b-md focus:outline-none focus:ring-teal-500 focus:border-teal-500 focus:z-10 sm:text-sm"
             placeholder="Password">
         </div>
       </div>

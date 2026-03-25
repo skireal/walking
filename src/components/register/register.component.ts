@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
+import { parseFirebaseError } from '../../utils/firebase-errors';
 
 @Component({
   selector: 'app-register',
@@ -22,16 +23,6 @@ export class RegisterComponent {
   isLoading = signal(false);
 
   async register(): Promise<void> {
-    if (!this.email().trim() || !this.password()) {
-      this.error.set('Please enter both email and password.');
-      return;
-    }
-
-    if (this.password().length < 6) {
-      this.error.set('Password must be at least 6 characters.');
-      return;
-    }
-
     if (this.password() !== this.confirmPassword()) {
       this.error.set('Passwords do not match.');
       return;
@@ -43,8 +34,8 @@ export class RegisterComponent {
     try {
       await this.authService.register(this.email(), this.password());
       this.router.navigate(['/dashboard']);
-    } catch (e: unknown) {
-      this.error.set(e instanceof Error ? e.message : 'Failed to register.');
+    } catch (e: any) {
+      this.error.set(parseFirebaseError(e));
     } finally {
       this.isLoading.set(false);
     }

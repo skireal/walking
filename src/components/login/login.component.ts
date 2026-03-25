@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
+import { parseFirebaseError } from '../../utils/firebase-errors';
 
 @Component({
   selector: 'app-login',
@@ -27,7 +28,7 @@ export class LoginComponent {
       await this.authService.loginWithGoogle();
       this.router.navigate(['/dashboard']);
     } catch (e: unknown) {
-      this.error.set(e instanceof Error ? e.message : 'Failed to sign in with Google.');
+      this.error.set(parseFirebaseError(e));
     } finally {
       this.isLoading.set(false);
     }
@@ -45,7 +46,7 @@ export class LoginComponent {
       await this.authService.login(this.email(), this.password());
       this.router.navigate(['/dashboard']);
     } catch (e: unknown) {
-      this.error.set(e instanceof Error ? e.message : 'Failed to log in.');
+      this.error.set(parseFirebaseError(e));
     } finally {
       this.isLoading.set(false);
     }
