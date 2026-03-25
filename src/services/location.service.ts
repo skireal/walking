@@ -1,6 +1,7 @@
 import { Injectable, signal, effect, inject, DestroyRef } from '@angular/core';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { App } from '@capacitor/app';
+import type { PluginListenerHandle } from '@capacitor/core';
 import type { BackgroundGeolocationPlugin, Location, CallbackError } from '@capacitor-community/background-geolocation';
 import { LocationBuffer, type BufferedLocation } from '../plugins/location-buffer.plugin';
 import { ProgressService } from './progress.service';
@@ -18,7 +19,8 @@ export class LocationService {
   private watchId: number | null = null;
   private nativeWatcherId: string | null = null;
   private accuracyThreshold = 50;
-  private lastGpsAcquiredLog = 0; // Минимальная точность: 50 метров
+  private lastGpsAcquiredLog = 0;
+  private appResumeListener: PluginListenerHandle | null = null;
   private destroyRef = inject(DestroyRef);
   private progressService = inject(ProgressService);
 
@@ -59,10 +61,19 @@ export class LocationService {
       .then(() => console.log('✅ [LocationBuffer] startBuffering OK'))
       .catch((err: unknown) => console.warn('⚠️ [LocationBuffer] startBuffering FAILED:', err));
 
-    // Подписываемся на resume — читаем накопленный буфер
+    // Сбрасываем буфер сразу — на случай если приложение открылось после прогулки (холодный старт)
+    this.flushLocationBuffer();
+
+    // Подписываемся на resume — но только один раз. Удаляем старый слушатель перед регистрацией нового.
+    if (this.appResumeListener) {
+      this.appResumeListener.remove();
+      this.appResumeListener = null;
+    }
     App.addListener('resume', () => {
       console.log('📱 [App] resumed — flushing location buffer...');
       this.flushLocationBuffer();
+    }).then(handle => {
+      this.appResumeListener = handle;
     });
 
     console.log('🛰️ [BackgroundGeolocation] Adding watcher...');
@@ -243,6 +254,10 @@ export class LocationService {
       if (this.nativeWatcherId) {
         BackgroundGeolocation.removeWatcher({ id: this.nativeWatcherId });
         this.nativeWatcherId = null;
+      }
+      if (this.appResumeListener) {
+        this.appResumeListener.remove();
+        this.appResumeListener = null;
       }
       LocationBuffer.stopBuffering().catch(() => {});
     } else {

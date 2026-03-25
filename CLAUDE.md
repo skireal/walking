@@ -6,6 +6,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Walker** — Angular 17+ standalone app wrapped in Capacitor for Android. Tracks GPS walks and reveals a fog-of-war map as you explore. Features Firebase auth (email + native Google Sign-In on Android), Firestore progress sync, Leaflet map with canvas fog layer, and Gemini AI route planning.
 
+## Node.js Version
+
+**Requires Node 22.12.0.** The Angular CLI will refuse to run on anything older.
+
+```bash
+nvm use 22.12.0   # run this first in every new terminal session
+```
+
+`nvm-windows` ignores `.nvmrc`, so there's no auto-switch — always set manually before building.
+
 ## Commands
 
 ```bash
