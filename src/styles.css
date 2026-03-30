@@ -1,13 +1,19 @@
 /* Global styles for the Walker Angular app */
 
-html, body {
+html,
+body {
   margin: 0;
   padding: 0;
   height: 100%;
 }
 
 body {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
 }
 
 :root {
@@ -23,7 +29,9 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: opacity 0.5s ease, visibility 0.5s ease;
+  transition:
+    opacity 0.5s ease,
+    visibility 0.5s ease;
   opacity: 1;
   visibility: visible;
 }
@@ -42,26 +50,91 @@ body {
 }
 
 /* Variant A — independent random pulse */
-@keyframes splashPulse1 { 0%,100%{opacity:.25} 30%{opacity:1}    60%{opacity:.5}  }
-@keyframes splashPulse2 { 0%,100%{opacity:.5}  20%{opacity:.2}   70%{opacity:1}   }
-@keyframes splashPulse3 { 0%,100%{opacity:.8}  45%{opacity:.15}  75%{opacity:.9}  }
-@keyframes splashPulse4 { 0%,100%{opacity:.3}  35%{opacity:.9}   65%{opacity:.2}  }
-@keyframes splashPulse5 { 0%,100%{opacity:.7}  15%{opacity:1}    55%{opacity:.3}  }
+@keyframes splashPulse1 {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  30% {
+    opacity: 1;
+  }
+  60% {
+    opacity: 0.5;
+  }
+}
+@keyframes splashPulse2 {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  20% {
+    opacity: 0.2;
+  }
+  70% {
+    opacity: 1;
+  }
+}
+@keyframes splashPulse3 {
+  0%,
+  100% {
+    opacity: 0.8;
+  }
+  45% {
+    opacity: 0.15;
+  }
+  75% {
+    opacity: 0.9;
+  }
+}
+@keyframes splashPulse4 {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  35% {
+    opacity: 0.9;
+  }
+  65% {
+    opacity: 0.2;
+  }
+}
+@keyframes splashPulse5 {
+  0%,
+  100% {
+    opacity: 0.7;
+  }
+  15% {
+    opacity: 1;
+  }
+  55% {
+    opacity: 0.3;
+  }
+}
 
-.splash__logo .d1 { animation: splashPulse1 2.3s ease-in-out infinite; }
-.splash__logo .d2 { animation: splashPulse2 1.9s ease-in-out infinite; }
-.splash__logo .d3 { animation: splashPulse3 2.7s ease-in-out infinite; }
-.splash__logo .d4 { animation: splashPulse4 2.1s ease-in-out infinite 0.4s; }
-.splash__logo .d5 { animation: splashPulse5 2.5s ease-in-out infinite 0.2s; }
+.splash__logo .d1 {
+  animation: splashPulse1 2.3s ease-in-out infinite;
+}
+.splash__logo .d2 {
+  animation: splashPulse2 1.9s ease-in-out infinite;
+}
+.splash__logo .d3 {
+  animation: splashPulse3 2.7s ease-in-out infinite;
+}
+.splash__logo .d4 {
+  animation: splashPulse4 2.1s ease-in-out infinite 0.4s;
+}
+.splash__logo .d5 {
+  animation: splashPulse5 2.5s ease-in-out infinite 0.2s;
+}
 
 .splash__name {
   position: absolute;
-  bottom: 60px;
+  bottom: 80px;
   left: 0;
   right: 0;
   text-align: center;
   font-size: 11px;
-  letter-spacing: .25em;
+  letter-spacing: 0.25em;
   text-transform: uppercase;
   color: #374151;
 }
