@@ -40,13 +40,6 @@
     </div>
   </div>
 
-  <!-- Debug Panel -->
-  <div class="absolute bottom-4 left-4 z-10 bg-black/70 text-white text-xs font-mono p-2 rounded-lg pointer-events-none space-y-1">
-    <div>updates: {{ locationUpdateCount() }}</div>
-    <div>last: {{ lastUpdateTime() }}</div>
-    <div>accuracy: {{ lastAccuracy() !== null ? lastAccuracy() + 'm' : '—' }}</div>
-  </div>
-
   <!-- Action Buttons -->
   <div class="absolute bottom-24 right-4 z-10 flex flex-col items-center space-y-3 pointer-events-auto">
     <!-- Recenter Button -->
@@ -63,5 +56,3 @@
   </div>
 </div>
 
-<!-- Log Viewer -->
-<app-log-viewer></app-log-viewer>
