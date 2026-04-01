@@ -74,8 +74,10 @@ export class ProgressService {
       }
 
       if (user) {
-        // User is logged in
-        this.resetProgress(true);
+        // User is logged in — load localStorage first as crash-safe seed,
+        // then Firestore snapshot will merge cloud tiles on top.
+        this.resetProgress(false);
+        this.loadFromLocalStorage();
 
         const progressDocRef = doc(this.db, 'users', user.uid, 'progress', 'main');
         this.progressUnsubscribe = onSnapshot(
@@ -147,7 +149,10 @@ export class ProgressService {
         return newTiles;
       });
       console.log(`🟩 [Progress] new tile: ${currentTileId} (total: ${this.visitedTiles().size})`);
-      // Save only when tiles actually change — no point saving stale data
+      // Always persist to localStorage immediately as a crash-safe fallback.
+      // Firestore save is debounced — if the app is killed before it fires,
+      // localStorage ensures data survives and gets merged on next open.
+      this.saveToLocalStorage();
       this.saveProgress();
     }
   }
