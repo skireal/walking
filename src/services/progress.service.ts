@@ -14,6 +14,7 @@ declare var L: LeafletStatic | undefined;
 
 const STORAGE_KEY = 'walker_progress_data_v2'; // Bump version to avoid conflicts
 const MIN_DISTANCE_THRESHOLD_METERS = 3; // Minimum distance in meters to record a new point
+const MAX_SPEED_MS = 8; // ~30 km/h — above this is vehicle, not on foot
 
 interface ProgressData {
   visitedTiles: string[];
@@ -116,6 +117,9 @@ export class ProgressService {
   }
 
   updatePosition(pos: GeolocationPosition): void {
+    const speed = pos.coords.speed;
+    if (speed !== null && speed > MAX_SPEED_MS) return;
+
     const lat = pos.coords.latitude;
     const lng = pos.coords.longitude;
     const newPoint: [number, number] = [lat, lng];
