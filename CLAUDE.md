@@ -35,7 +35,7 @@ There are no automated tests in this project.
 
 ## Critical Build Rule
 
-**Never run `ng build --base-href /`** — in Git Bash, the `/` argument gets expanded to `C:/Program Files/Git/`, breaking Capacitor asset loading (dark screen on Android). The `angular.json` already sets `"baseHref": "/"`. Just run `ng build`.
+**Always use `npm run build`, never `ng build` directly.** The global `ng` may be a different version and will fail with `availableParallelism is not a function`. Also never use `--base-href /` — in Git Bash it expands to `C:/Program Files/Git/`, breaking Capacitor asset loading.
 
 ## Architecture
 

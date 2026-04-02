@@ -16,7 +16,7 @@
    ```
 2. Запустить dev-сервер:
    ```bash
-   ng serve --port 3050
+   npm start
    ```
 3. Открыть в браузере: `http://localhost:3050/walker`
 
@@ -26,7 +26,7 @@
 
 1. Собрать Angular-приложение:
    ```bash
-   ng build
+   npm run build
    ```
 
 2. Синхронизировать с Capacitor:
