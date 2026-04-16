@@ -19,9 +19,13 @@
             <div class="w-2 h-2 bg-yellow-500 rounded-full"></div>
             <span class="text-xs text-gray-300">Error</span>
           }
+          @case ('low-accuracy') {
+            <div class="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
+            <span class="text-xs text-gray-300">Searching GPS</span>
+          }
           @default {
-            <div class="w-2 h-2 bg-gray-500 rounded-full"></div>
-            <span class="text-xs text-gray-400">Init...</span>
+            <div class="w-2 h-2 bg-gray-500 rounded-full animate-pulse"></div>
+            <span class="text-xs text-gray-400">Starting...</span>
           }
         }
       </div>
