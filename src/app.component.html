@@ -1,6 +1,9 @@
 @if (!splashDone()) {
   <app-splash [hiding]="splashHiding()" />
 }
+@if (showOnboarding()) {
+  <app-onboarding (done)="showOnboarding.set(false)" />
+}
 
 <div class="h-screen w-screen flex flex-col">
   <main class="flex-1 overflow-y-auto" [class.pb-20]="isLoggedIn()">

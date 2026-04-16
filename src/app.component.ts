@@ -2,6 +2,7 @@ import { Component, ChangeDetectionStrategy, inject, signal } from '@angular/cor
 import { RouterOutlet } from '@angular/router';
 import { BottomNavComponent } from './components/bottom-nav/bottom-nav.component';
 import { SplashComponent } from './components/splash/splash.component';
+import { OnboardingComponent, hasSeenOnboarding } from './components/onboarding/onboarding.component';
 import { AuthService } from './services/auth.service';
 
 @Component({
@@ -9,17 +10,16 @@ import { AuthService } from './services/auth.service';
   templateUrl: './app.component.html',
   styleUrls: [],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterOutlet, BottomNavComponent, SplashComponent],
+  imports: [RouterOutlet, BottomNavComponent, SplashComponent, OnboardingComponent],
 })
 export class AppComponent {
   private authService = inject(AuthService);
 
   isLoggedIn = this.authService.isLoggedIn;
 
-  /** false = splash visible; true = splash fading out */
   splashHiding = signal(false);
-  /** removed from DOM after fade-out completes */
   splashDone = signal(false);
+  showOnboarding = signal(false);
 
   constructor() {
     // Show splash for at least 1.5s so the animation plays once,
@@ -27,8 +27,12 @@ export class AppComponent {
     const minDelay = new Promise<void>(r => setTimeout(r, 1500));
     Promise.all([this.authService.waitForAuth(), minDelay]).then(() => {
       this.splashHiding.set(true);
-      // Remove from DOM after CSS fade-out transition (500ms)
-      setTimeout(() => this.splashDone.set(true), 500);
+      setTimeout(() => {
+        this.splashDone.set(true);
+        if (this.authService.isLoggedIn() && !hasSeenOnboarding()) {
+          this.showOnboarding.set(true);
+        }
+      }, 500);
     });
   }
 }
