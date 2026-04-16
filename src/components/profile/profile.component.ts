@@ -22,6 +22,14 @@ export class ProfileComponent {
   currentUser = this.authService.currentUser;
   joinDate = signal('Joined March 2023');
 
+  displayName = computed(() => {
+    const user = this.currentUser();
+    if (!user) return '';
+    if (user.displayName) return user.displayName;
+    const namePart = user.email?.split('@')[0] ?? '';
+    return namePart.charAt(0).toUpperCase() + namePart.slice(1);
+  });
+
   avatarUrl = computed(() => {
     const user = this.currentUser();
     return generateAvatarDataUrl(user?.email ?? user?.uid ?? 'walker');
