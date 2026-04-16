@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Walker — Splash Screen Preview</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117;
+    font-family: system-ui, sans-serif;
+    color: #9ca3af;
+    padding: 32px 16px;
+  }
+  h1 { text-align: center; font-size: 14px; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 32px; color: #4b5563; }
+  .options {
+    display: flex;
+    gap: 24px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .option {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+  .label {
+    font-size: 11px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: #4b5563;
+  }
+  .screen {
+    width: 180px;
+    height: 320px;
+    background: #111827;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 0 0 1px #1f2937;
+  }
+  /* nudge logo slightly above center */
+  .logo-wrap {
+    position: absolute;
+    top: calc(50% - 40px);
+    left: 50%;
+    transform: translate(-50%, -50%);
+  }
+  svg.logo { width: 120px; height: 120px; }
+
+  /* ── VARIANT A: independent random pulse ── */
+  @keyframes pulseA1 {
+    0%,100%{opacity:.25} 30%{opacity:1} 60%{opacity:.5}
+  }
+  @keyframes pulseA2 {
+    0%,100%{opacity:.5} 20%{opacity:.2} 70%{opacity:1}
+  }
+  @keyframes pulseA3 {
+    0%,100%{opacity:.8} 45%{opacity:.15} 75%{opacity:.9}
+  }
+  @keyframes pulseA4 {
+    0%,100%{opacity:.3} 35%{opacity:.9} 65%{opacity:.2}
+  }
+  @keyframes pulseA5 {
+    0%,100%{opacity:.7} 15%{opacity:1} 55%{opacity:.3}
+  }
+  #a .d1 { animation: pulseA1 2.3s ease-in-out infinite; }
+  #a .d2 { animation: pulseA2 1.9s ease-in-out infinite; }
+  #a .d3 { animation: pulseA3 2.7s ease-in-out infinite; }
+  #a .d4 { animation: pulseA4 2.1s ease-in-out infinite 0.4s; }
+  #a .d5 { animation: pulseA5 2.5s ease-in-out infinite 0.2s; }
+
+  /* ── VARIANT B: wave left→right ── */
+  @keyframes wave {
+    0%,100%{opacity:.2} 50%{opacity:1}
+  }
+  #b .d1 { animation: wave 1.6s ease-in-out infinite 0s; }
+  #b .d2 { animation: wave 1.6s ease-in-out infinite .2s; }
+  #b .d3 { animation: wave 1.6s ease-in-out infinite .4s; }
+  #b .d4 { animation: wave 1.6s ease-in-out infinite .3s; }
+  #b .d5 { animation: wave 1.6s ease-in-out infinite .5s; }
+
+  /* ── VARIANT C: breathe (all together, slow) ── */
+  @keyframes breathe {
+    0%,100%{opacity:.15} 50%{opacity:1}
+  }
+  #c .d1,#c .d2,#c .d3,#c .d4,#c .d5 {
+    animation: breathe 2s ease-in-out infinite;
+  }
+
+  /* ── VARIANT D: fog-of-war reveal — tiles uncover one by one ── */
+  /*
+    Each tile: starts hidden (opacity 0.08), "reveals" to full (1.0),
+    stays lit briefly, then dims back. Staggered so they chain in
+    order: d1 → d2 → d3 → d4 → d5, then reset and repeat.
+    Total cycle = 3.5s, each tile occupies 20% of the cycle.
+  */
+  @keyframes reveal {
+    /* dim  → dim  → REVEAL → hold → fade → dim */
+    0%   { opacity: 0.08; }
+    8%   { opacity: 0.08; }
+    18%  { opacity: 1;    filter: drop-shadow(0 0 6px #2dd4bf); }
+    30%  { opacity: 1;    filter: drop-shadow(0 0 6px #2dd4bf); }
+    44%  { opacity: 0.08; filter: none; }
+    100% { opacity: 0.08; }
+  }
+  /* order: d1 → d2 → d4 → d3 → d5 */
+  #d .d1 { animation: reveal 4.0s ease-in-out infinite 0.0s;  opacity:.08; }
+  #d .d2 { animation: reveal 4.0s ease-in-out infinite 0.6s;  opacity:.08; }
+  #d .d4 { animation: reveal 4.0s ease-in-out infinite 1.2s;  opacity:.08; }
+  #d .d3 { animation: reveal 4.0s ease-in-out infinite 1.8s;  opacity:.08; }
+  #d .d5 { animation: reveal 4.0s ease-in-out infinite 2.4s;  opacity:.08; }
+
+  .app-name {
+    position: absolute;
+    bottom: 60px;
+    left: 0; right: 0;
+    text-align: center;
+    font-size: 9px;
+    letter-spacing: .25em;
+    text-transform: uppercase;
+    color: #374151;
+  }
+</style>
+</head>
+<body>
+<h1>Splash screen — выбери вариант</h1>
+<div class="options">
+
+  <!-- A: random pulse -->
+  <div class="option">
+    <div class="screen" id="a">
+      <div class="logo-wrap">
+        <svg class="logo" viewBox="0 0 192 192" fill="none">
+          <path class="d1" d="M 44,59 68,83 44,107 20,83 Z" fill="#2dd4bf"/>
+          <path class="d2" d="M 96,59 120,83 96,107 72,83 Z" fill="#2dd4bf"/>
+          <path class="d3" d="M 148,59 172,83 148,107 124,83 Z" fill="#2dd4bf"/>
+          <path class="d4" d="M 70,85 94,109 70,133 46,109 Z" fill="#2dd4bf"/>
+          <path class="d5" d="M 122,85 146,109 122,133 98,109 Z" fill="#2dd4bf"/>
+        </svg>
+      </div>
+      <span class="app-name">walker</span>
+    </div>
+    <span class="label">A — random pulse</span>
+  </div>
+
+  <!-- B: wave -->
+  <div class="option">
+    <div class="screen" id="b">
+      <div class="logo-wrap">
+        <svg class="logo" viewBox="0 0 192 192" fill="none">
+          <path class="d1" d="M 44,59 68,83 44,107 20,83 Z" fill="#2dd4bf"/>
+          <path class="d2" d="M 96,59 120,83 96,107 72,83 Z" fill="#2dd4bf"/>
+          <path class="d3" d="M 148,59 172,83 148,107 124,83 Z" fill="#2dd4bf"/>
+          <path class="d4" d="M 70,85 94,109 70,133 46,109 Z" fill="#2dd4bf"/>
+          <path class="d5" d="M 122,85 146,109 122,133 98,109 Z" fill="#2dd4bf"/>
+        </svg>
+      </div>
+      <span class="app-name">walker</span>
+    </div>
+    <span class="label">B — wave</span>
+  </div>
+
+  <!-- C: breathe -->
+  <div class="option">
+    <div class="screen" id="c">
+      <div class="logo-wrap">
+        <svg class="logo" viewBox="0 0 192 192" fill="none">
+          <path class="d1" d="M 44,59 68,83 44,107 20,83 Z" fill="#2dd4bf"/>
+          <path class="d2" d="M 96,59 120,83 96,107 72,83 Z" fill="#2dd4bf"/>
+          <path class="d3" d="M 148,59 172,83 148,107 124,83 Z" fill="#2dd4bf"/>
+          <path class="d4" d="M 70,85 94,109 70,133 46,109 Z" fill="#2dd4bf"/>
+          <path class="d5" d="M 122,85 146,109 122,133 98,109 Z" fill="#2dd4bf"/>
+        </svg>
+      </div>
+      <span class="app-name">walker</span>
+    </div>
+    <span class="label">C — breathe</span>
+  </div>
+
+  <!-- D: sparkle -->
+  <div class="option">
+    <div class="screen" id="d">
+      <div class="logo-wrap">
+        <svg class="logo" viewBox="0 0 192 192" fill="none">
+          <path class="d1" d="M 44,59 68,83 44,107 20,83 Z" fill="#2dd4bf"/>
+          <path class="d2" d="M 96,59 120,83 96,107 72,83 Z" fill="#2dd4bf"/>
+          <path class="d3" d="M 148,59 172,83 148,107 124,83 Z" fill="#2dd4bf"/>
+          <path class="d4" d="M 70,85 94,109 70,133 46,109 Z" fill="#2dd4bf"/>
+          <path class="d5" d="M 122,85 146,109 122,133 98,109 Z" fill="#2dd4bf"/>
+        </svg>
+      </div>
+      <span class="app-name">walker</span>
+    </div>
+    <span class="label">D — fog reveal</span>
+  </div>
+
+</div>
+</body>
+</html>

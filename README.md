@@ -18,23 +18,26 @@
    ```bash
    npm start
    ```
-3. Открыть в браузере: `http://localhost:3050/walker`
+3. Открыть в браузере: `http://localhost:3050/`
 
 ## Сборка APK для Android
 
 **Требования:** Node.js, Android Studio (с установленным Android SDK)
 
 1. Собрать Angular-приложение:
+
    ```bash
    npm run build
    ```
 
 2. Синхронизировать с Capacitor:
+
    ```bash
    npx cap sync android
    ```
 
 3. Открыть проект в Android Studio:
+
    ```bash
    npx cap open android
    ```
@@ -43,6 +46,7 @@
    **Build → Generate App Bundles and APKs → Generate APKs → debug → Create**
 
 5. Готовый APK будет по пути:
+
    ```
    android/app/build/outputs/apk/debug/app-debug.apk
    ```
