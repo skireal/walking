@@ -16,12 +16,7 @@ export const APP_ROUTES: Routes = [
     loadComponent: () => import('./components/dashboard/dashboard.component').then(m => m.DashboardComponent),
     canActivate: [authGuard]
   },
-  {
-    path: 'planner',
-    loadComponent: () => import('./components/ai-route-planner/ai-route-planner.component').then(m => m.AiRoutePlannerComponent),
-    canActivate: [authGuard]
-  },
-  {
+{
     path: 'profile',
     loadComponent: () => import('./components/profile/profile.component').then(m => m.ProfileComponent),
     canActivate: [authGuard]
