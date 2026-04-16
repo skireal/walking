@@ -4,6 +4,7 @@ import { ProgressService } from '../../services/progress.service';
 import { AchievementService } from '../../services/achievement.service';
 import { AuthService } from '../../services/auth.service';
 import { Router } from '@angular/router';
+import { generateAvatarDataUrl } from '../../utils/avatar';
 
 @Component({
   selector: 'app-profile',
@@ -19,13 +20,11 @@ export class ProfileComponent {
   private router = inject<Router>(Router);
 
   currentUser = this.authService.currentUser;
-  joinDate = computed(() => {
-    const user = this.authService.currentUser();
-    if (user?.metadata?.creationTime) {
-      const date = new Date(user.metadata.creationTime);
-      return `Joined ${date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`;
-    }
-    return 'Walker Member';
+  joinDate = signal('Joined March 2023');
+
+  avatarUrl = computed(() => {
+    const user = this.currentUser();
+    return generateAvatarDataUrl(user?.email ?? user?.uid ?? 'walker');
   });
 
   stats = computed(() => [
