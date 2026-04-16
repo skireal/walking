@@ -1,42 +1,23 @@
 <div class="onboarding">
   <div class="onboarding__card">
 
-    <!-- Icon -->
+    <!-- Logo illustration — opacity of each diamond varies per slide -->
     <div class="onboarding__icon">
-      @if (steps[step()].icon === 'fog') {
-        <svg viewBox="0 0 192 192" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect x="16" y="16" width="160" height="160" rx="12" fill="#1f2937"/>
-          <rect x="16" y="16" width="160" height="160" rx="12" fill="url(#fog)" opacity="0.7"/>
-          <circle cx="96" cy="96" r="36" fill="none"/>
-          <path d="M 44,59 68,83 44,107 20,83 Z" fill="#2dd4bf" opacity="0.9"/>
-          <path d="M 96,59 120,83 96,107 72,83 Z" fill="#2dd4bf" opacity="0.9"/>
-          <path d="M 148,59 172,83 148,107 124,83 Z" fill="#2dd4bf" opacity="0.3"/>
-          <path d="M 70,85 94,109 70,133 46,109 Z" fill="#2dd4bf" opacity="0.9"/>
-          <path d="M 122,85 146,109 122,133 98,109 Z" fill="#2dd4bf" opacity="0.3"/>
-          <defs>
-            <radialGradient id="fog" cx="70%" cy="30%" r="60%">
-              <stop offset="0%" stop-color="#111827" stop-opacity="0"/>
-              <stop offset="100%" stop-color="#111827" stop-opacity="1"/>
-            </radialGradient>
-          </defs>
-        </svg>
-      } @else if (steps[step()].icon === 'walk') {
-        <svg viewBox="0 0 192 192" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="96" cy="40" r="18" fill="#2dd4bf"/>
-          <path d="M96 62 L80 110 L60 140" stroke="#2dd4bf" stroke-width="8" stroke-linecap="round"/>
-          <path d="M96 62 L112 110 L132 140" stroke="#2dd4bf" stroke-width="8" stroke-linecap="round"/>
-          <path d="M80 88 L112 88" stroke="#2dd4bf" stroke-width="8" stroke-linecap="round"/>
-        </svg>
-      } @else {
-        <svg viewBox="0 0 192 192" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect x="24" y="32" width="144" height="128" rx="8" stroke="#2dd4bf" stroke-width="6"/>
-          <path d="M 52,72 68,88 52,104 36,88 Z" fill="#2dd4bf"/>
-          <path d="M 88,72 104,88 88,104 72,88 Z" fill="#2dd4bf" opacity="0.5"/>
-          <path d="M 124,72 140,88 124,104 108,88 Z" fill="#2dd4bf" opacity="0.2"/>
-          <path d="M 70,94 86,110 70,126 54,110 Z" fill="#2dd4bf" opacity="0.5"/>
-          <path d="M 106,94 122,110 106,126 90,110 Z" fill="#2dd4bf"/>
-        </svg>
-      }
+      <svg viewBox="0 0 192 192" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- slide 0: mostly hidden (2/5 visible) -->
+        <!-- slide 1: half revealed (3/5 visible) -->
+        <!-- slide 2: fully revealed (5/5 visible) -->
+        <path d="M 44,59 68,83 44,107 20,83 Z"    fill="#2dd4bf"
+          [attr.opacity]="step() === 0 ? 0.9 : step() === 1 ? 0.9 : 0.9"/>
+        <path d="M 96,59 120,83 96,107 72,83 Z"    fill="#2dd4bf"
+          [attr.opacity]="step() === 0 ? 0.15 : step() === 1 ? 0.9 : 0.9"/>
+        <path d="M 148,59 172,83 148,107 124,83 Z" fill="#2dd4bf"
+          [attr.opacity]="step() === 0 ? 0.15 : step() === 1 ? 0.15 : 0.9"/>
+        <path d="M 70,85 94,109 70,133 46,109 Z"   fill="#2dd4bf"
+          [attr.opacity]="step() === 0 ? 0.9 : step() === 1 ? 0.9 : 0.9"/>
+        <path d="M 122,85 146,109 122,133 98,109 Z" fill="#2dd4bf"
+          [attr.opacity]="step() === 0 ? 0.15 : step() === 1 ? 0.5 : 0.9"/>
+      </svg>
     </div>
 
     <!-- Text -->
