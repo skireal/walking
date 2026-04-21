@@ -28,3 +28,7 @@ dist-ssr
 src/env.ts
 PROJECT_OVERVIEW.md
 android/
+
+# Android release signing — NEVER commit these
+android/app/walker-release.jks
+android/app/keystore.properties

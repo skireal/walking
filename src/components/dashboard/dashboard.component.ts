@@ -67,12 +67,20 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
     });
   }
 
+  private readonly onVisibilityChange = (): void => {
+    if (document.visibilityState === 'visible') {
+      this.recenterMap();
+    }
+  };
+
   ngAfterViewInit(): void {
     this.initMap();
+    document.addEventListener('visibilitychange', this.onVisibilityChange);
   }
 
   ngOnDestroy(): void {
     this.locationService.stopWatching();
+    document.removeEventListener('visibilitychange', this.onVisibilityChange);
   }
 
   private initMap(): void {
