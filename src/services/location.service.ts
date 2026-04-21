@@ -16,6 +16,7 @@ export type LocationStatus = 'idle' | 'tracking' | 'denied' | 'error' | 'initial
 export class LocationService {
   position = signal<GeolocationPosition | null>(null);
   status = signal<LocationStatus>('idle');
+  private watching = false;
   private watchId: number | null = null;
   private nativeWatcherId: string | null = null;
   private accuracyThreshold = 50;
@@ -39,7 +40,37 @@ export class LocationService {
     this.destroyRef.onDestroy(() => this.stopWatching());
   }
 
+  isWatching(): boolean {
+    return this.watching;
+  }
+
+  /**
+   * Resolves when GPS reaches a usable state (tracking or low-accuracy),
+   * or when permission is denied/errored, or after timeoutMs.
+   * Safe to call before startWatching() — polls the status signal.
+   */
+  waitForFirstFix(timeoutMs = 10_000): Promise<void> {
+    return new Promise((resolve) => {
+      const done = () => {
+        clearInterval(interval);
+        clearTimeout(timer);
+        resolve();
+      };
+      const check = () => {
+        const s = this.status();
+        if (s === 'tracking' || s === 'low-accuracy' || s === 'denied' || s === 'error') {
+          done();
+        }
+      };
+      check(); // resolve immediately if already in a final state
+      const interval = setInterval(check, 150);
+      const timer = setTimeout(done, timeoutMs);
+    });
+  }
+
   startWatching(): void {
+    if (this.watching) return;
+    this.watching = true;
     if (Capacitor.isNativePlatform()) {
       this.startNativeWatching();
     } else {
@@ -250,6 +281,7 @@ export class LocationService {
   // ── Общее ──────────────────────────────────────────────────────────────────
 
   stopWatching(): void {
+    this.watching = false;
     if (Capacitor.isNativePlatform()) {
       if (this.nativeWatcherId) {
         BackgroundGeolocation.removeWatcher({ id: this.nativeWatcherId });

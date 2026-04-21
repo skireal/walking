@@ -99,7 +99,11 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
     this.fogLayer = this.createFogLayer();
     this.fogLayer.addTo(this.map);
 
-    this.locationService.startWatching();
+    // GPS may already be watching (started from AppComponent during splash).
+    // Only call startWatching() if it hasn't been started yet.
+    if (!this.locationService.isWatching()) {
+      this.locationService.startWatching();
+    }
     this.isMapInitialized.set(true);
   }
 
