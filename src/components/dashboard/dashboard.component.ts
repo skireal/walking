@@ -18,6 +18,7 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
   private authService = inject(AuthService);
 
   discoveredTiles = this.progressService.discoveredTilesCount;
+  sessionDistance = this.progressService.sessionDistance;
 
   private map: any;
   private isMapInitialized = signal(false);

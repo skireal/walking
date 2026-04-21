@@ -30,6 +30,14 @@ export class ProgressService {
 
   discoveredTilesCount = computed(() => this.visitedTiles().size);
 
+  private sessionDistanceMeters = signal(0);
+
+  sessionDistance = computed(() => {
+    const m = this.sessionDistanceMeters();
+    if (m < 1000) return `${Math.round(m)} m`;
+    return `${(m / 1000).toFixed(2)} km`;
+  });
+
   public readonly TILE_SIZE_DEGREES_LAT = 0.0005;
 
   private authService = inject(AuthService);
@@ -135,6 +143,8 @@ export class ProgressService {
         if (distanceChange < MIN_DISTANCE_THRESHOLD_METERS) {
             return; // logged in bulk by caller if needed
         }
+
+        this.sessionDistanceMeters.update(d => d + distanceChange);
       } catch (e) {
         console.error('🗺️ [Progress] distance calc error:', e);
       }
