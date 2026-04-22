@@ -13,7 +13,7 @@ interface LeafletStatic {
 declare var L: LeafletStatic | undefined;
 
 const STORAGE_KEY = 'walker_progress_data_v2'; // Bump version to avoid conflicts
-const MIN_DISTANCE_THRESHOLD_METERS = 3; // Minimum distance in meters to record a new point
+const MIN_DISTANCE_THRESHOLD_METERS = 15; // Minimum distance to record — filters GPS drift while stationary
 const MAX_SPEED_MS = 5; // ~18 km/h — allows walking and running, excludes cycling and vehicles
 
 interface ProgressData {
