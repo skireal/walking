@@ -2,56 +2,57 @@
 
 Приложение для отслеживания прогулок с туманом войны на карте.
 
+## Требования
+
+- **Node.js 22.12.0** (через [Volta](https://volta.sh/) — версия зафиксирована в `package.json`)
+- **Android Studio** с Android SDK (для сборки APK)
+- **JAVA_HOME** — нужно установить один раз в переменных среды Windows:
+  `JAVA_HOME = C:\Program Files\Android\Android Studio\jbr`
+  *(Win + R → `sysdm.cpl` → Advanced → Environment Variables → System Variables → New)*
+
 ## Запуск локально
 
-**Требования:** Node.js
+```bash
+npm install
+npm start
+```
 
-1. Установить зависимости:
-   ```bash
-   npm install
-   ```
-2. Запустить dev-сервер:
-   ```bash
-   npm start
-   ```
-3. Открыть в браузере: `http://localhost:3050/`
+Открыть в браузере: `http://localhost:4200/`
 
 ## Сборка APK для Android
 
-**Требования:** Node.js, Android Studio (с установленным Android SDK)
+### Первый раз: настройка подписи
 
-1. Собрать Angular-приложение:
+Создай файл `android/app/keystore.properties` (не попадает в git):
 
-   ```bash
-   npm run build
-   ```
+```properties
+storeFile=walker-release.jks
+storePassword=ВАШ_ПАРОЛЬ
+keyAlias=walker
+keyPassword=ВАШ_ПАРОЛЬ
+```
 
-2. Синхронизировать с Capacitor:
+> `walker-release.jks` должен лежать в `android/app/`. Храни его в надёжном месте — без него нельзя будет обновлять приложение.
 
-   ```bash
-   npx cap sync android
-   ```
+### Сборка
 
-3. Открыть проект в Android Studio:
+```bash
+npm run build
+npx cap sync android
+cd android
+.\gradlew assembleRelease
+```
 
-   ```bash
-   npx cap open android
-   ```
+Готовый APK:
 
-4. В Android Studio:
-   **Build → Generate App Bundles and APKs → Generate APKs → debug → Create**
+```
+android/app/build/outputs/apk/release/app-release.apk
+```
 
-5. Готовый APK будет по пути:
+Скинь на телефон (через Telegram, Google Drive и т.д.) и установи, разрешив «Установку из неизвестных источников».
 
-   ```
-   android/app/build/outputs/apk/debug/app-debug.apk
-   ```
+## Настройка геолокации на Android
 
-6. Скинуть APK на телефон (через Telegram, Google Drive и т.д.), установить разрешив «Установку из неизвестных источников».
+Для корректного отслеживания маршрута:
 
-## Настройка на Android для фонового режима
-
-Чтобы приложение корректно отслеживало маршрут с выключенным экраном:
-
-- **Настройки → Приложения → Walker → Разрешения → Местоположение → Разрешить всегда**
-- **Настройки → Приложения → Walker → Потребление заряда батареи → Без ограничений**
+**Настройки → Приложения → Walker → Разрешения → Местоположение → Разрешить всегда**
