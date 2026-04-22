@@ -137,7 +137,7 @@ export class ProgressService {
     });
   }
 
-  updatePosition(pos: GeolocationPosition): void {
+  updatePosition(pos: GeolocationPosition, trackDistance: boolean = true): void {
     const speed = pos.coords.speed;
     if (speed !== null && speed > MAX_SPEED_MS) return;
 
@@ -145,7 +145,7 @@ export class ProgressService {
     const lng = pos.coords.longitude;
     const newPoint: [number, number] = [lat, lng];
 
-    if (this.lastPosition && typeof L !== 'undefined') {
+    if (trackDistance && this.lastPosition && typeof L !== 'undefined') {
       try {
         const lastLatLng = L.latLng([this.lastPosition.coords.latitude, this.lastPosition.coords.longitude]);
         const newLatLng = L.latLng(newPoint);
@@ -165,11 +165,13 @@ export class ProgressService {
       } catch (e) {
         console.error('🗺️ [Progress] distance calc error:', e);
       }
-    } else if (!this.lastPosition) {
+    } else if (trackDistance && !this.lastPosition) {
       console.log(`🗺️ [Progress] first position received, L available: ${typeof L !== 'undefined'}`);
     }
 
-    this.lastPosition = pos;
+    if (trackDistance) {
+      this.lastPosition = pos;
+    }
 
     // Discover new tile
     const currentTileId = this.getTileIdForLatLng(lat, lng);

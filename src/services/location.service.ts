@@ -162,7 +162,7 @@ export class LocationService {
         const pos = this.buildPosition(loc.latitude, loc.longitude, loc.accuracy, loc.time, loc.bearing ?? null, loc.speed ?? null, loc.altitude ?? null);
         if (loc.accuracy <= this.accuracyThreshold) {
           const before = this.progressService.visitedTiles().size;
-          this.progressService.updatePosition(pos);
+          this.progressService.updatePosition(pos, false);
           if (this.progressService.visitedTiles().size > before) newTiles++;
         } else {
           skippedAccuracy++;
