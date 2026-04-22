@@ -12,13 +12,25 @@ interface LeafletStatic {
 
 declare var L: LeafletStatic | undefined;
 
-const STORAGE_KEY = 'walker_progress_data_v2'; // Bump version to avoid conflicts
-const MIN_DISTANCE_THRESHOLD_METERS = 15; // Minimum distance to record — filters GPS drift while stationary
-const MAX_SPEED_MS = 5; // ~18 km/h — allows walking and running, excludes cycling and vehicles
+const STORAGE_KEY = 'walker_progress_data_v2';
+const MIN_DISTANCE_THRESHOLD_METERS = 15; // Filters GPS drift while stationary
+const MAX_SPEED_MS = 5; // ~18 km/h — walking/running only
+const DAILY_DISTANCE_SAVE_INTERVAL_METERS = 50; // Save distance every 50m even without new tiles
+
+interface DailyProgress {
+  date: string;        // "2026-04-22"
+  tileIds: string[];
+  distanceMeters: number;
+}
 
 interface ProgressData {
   visitedTiles: string[];
   unlockedAchievements: string[];
+  dailyProgress?: DailyProgress;
+}
+
+function todayString(): string {
+  return new Date().toISOString().slice(0, 10); // "2026-04-22"
 }
 
 @Injectable({
@@ -30,18 +42,18 @@ export class ProgressService {
 
   discoveredTilesCount = computed(() => this.visitedTiles().size);
 
-  private sessionDistanceMeters = signal(0);
-  private sessionTilesStart = 0; // tile count at session start, set after Firestore loads
+  // Daily stats — reset at midnight, persisted to Firestore
+  private dailyTileIds = signal<Set<string>>(new Set());
+  private dailyDistanceMeters = signal(0);
+  private lastSavedDistanceMeters = 0; // tracks when to trigger a save for distance-only updates
 
-  sessionDistance = computed(() => {
-    const m = this.sessionDistanceMeters();
+  dailyTilesCount = computed(() => this.dailyTileIds().size);
+
+  dailyDistance = computed(() => {
+    const m = this.dailyDistanceMeters();
     if (m < 1000) return `${Math.round(m)} m`;
     return `${(m / 1000).toFixed(2)} km`;
   });
-
-  sessionTilesCount = computed(() =>
-    Math.max(0, this.visitedTiles().size - this.sessionTilesStart)
-  );
 
   public readonly TILE_SIZE_DEGREES_LAT = 0.0005;
 
@@ -69,9 +81,7 @@ export class ProgressService {
       const user = this.authService.currentUser();
       const isFirebaseReady = this.authService.isFirebaseReady();
 
-      if (!isFirebaseReady) {
-        return;
-      }
+      if (!isFirebaseReady) return;
 
       if (this.db === null) {
         try {
@@ -88,8 +98,8 @@ export class ProgressService {
       }
 
       if (user) {
-        // User is logged in — load localStorage first as crash-safe seed,
-        // then Firestore snapshot will merge cloud tiles on top.
+        // Load localStorage first as crash-safe seed,
+        // then Firestore snapshot will merge on top.
         this.resetProgress(false);
         this.loadFromLocalStorage();
 
@@ -100,17 +110,10 @@ export class ProgressService {
             if (docSnap.exists()) {
               const data = docSnap.data() as ProgressData;
               untracked(() => {
-                // Merge incoming tiles with local ones — never overwrite local data.
-                // This prevents a race where Firestore reconnects after app resume
-                // and overwrites tiles that were just flushed from the location buffer.
                 this.visitedTiles.update(existing => {
                   const merged = new Set(existing);
                   (data.visitedTiles || []).forEach((t: string) => merged.add(t));
                   console.log(`☁️ [Progress] Firestore snapshot: ${data.visitedTiles?.length ?? 0} cloud tiles merged → total ${merged.size}`);
-                  // Lock the session baseline once after the first cloud sync.
-                  if (this.sessionTilesStart === 0) {
-                    this.sessionTilesStart = merged.size;
-                  }
                   return merged;
                 });
                 this.unlockedAchievements.update(existing => {
@@ -118,6 +121,8 @@ export class ProgressService {
                   (data.unlockedAchievements || []).forEach((a: string) => merged.add(a));
                   return merged;
                 });
+                // Restore daily progress if it's still today
+                this.applyDailyProgress(data.dailyProgress);
               });
             }
           },
@@ -126,7 +131,6 @@ export class ProgressService {
           }
         );
       } else {
-        // User is logged out
         this.resetProgress(false);
         this.loadFromLocalStorage();
       }
@@ -140,20 +144,24 @@ export class ProgressService {
     const lat = pos.coords.latitude;
     const lng = pos.coords.longitude;
     const newPoint: [number, number] = [lat, lng];
-    
-    // If there's a previous point, check the distance to avoid rapid updates on static location
+
     if (this.lastPosition && typeof L !== 'undefined') {
       try {
         const lastLatLng = L.latLng([this.lastPosition.coords.latitude, this.lastPosition.coords.longitude]);
         const newLatLng = L.latLng(newPoint);
         const distanceChange = lastLatLng.distanceTo(newLatLng);
 
-        // If movement is insignificant, do nothing.
-        if (distanceChange < MIN_DISTANCE_THRESHOLD_METERS) {
-            return; // logged in bulk by caller if needed
-        }
+        if (distanceChange < MIN_DISTANCE_THRESHOLD_METERS) return;
 
-        this.sessionDistanceMeters.update(d => d + distanceChange);
+        this.dailyDistanceMeters.update(d => d + distanceChange);
+
+        // Save distance every 50m even if no new tiles were opened
+        const current = this.dailyDistanceMeters();
+        if (current - this.lastSavedDistanceMeters >= DAILY_DISTANCE_SAVE_INTERVAL_METERS) {
+          this.lastSavedDistanceMeters = current;
+          this.saveToLocalStorage();
+          this.saveProgress();
+        }
       } catch (e) {
         console.error('🗺️ [Progress] distance calc error:', e);
       }
@@ -163,18 +171,21 @@ export class ProgressService {
 
     this.lastPosition = pos;
 
-    // Update the discovered tile if it's a new one
+    // Discover new tile
     const currentTileId = this.getTileIdForLatLng(lat, lng);
     if (!this.visitedTiles().has(currentTileId)) {
-      this.visitedTiles.update((tiles) => {
+      this.visitedTiles.update(tiles => {
         const newTiles = new Set(tiles);
         newTiles.add(currentTileId);
         return newTiles;
       });
-      console.log(`🟩 [Progress] new tile: ${currentTileId} (total: ${this.visitedTiles().size})`);
-      // Always persist to localStorage immediately as a crash-safe fallback.
-      // Firestore save is debounced — if the app is killed before it fires,
-      // localStorage ensures data survives and gets merged on next open.
+      this.dailyTileIds.update(tiles => {
+        const newTiles = new Set(tiles);
+        newTiles.add(currentTileId);
+        return newTiles;
+      });
+      this.lastSavedDistanceMeters = this.dailyDistanceMeters();
+      console.log(`🟩 [Progress] new tile: ${currentTileId} (total: ${this.visitedTiles().size}, today: ${this.dailyTileIds().size})`);
       this.saveToLocalStorage();
       this.saveProgress();
     }
@@ -203,17 +214,32 @@ export class ProgressService {
     const representativeLat = (tileY + 0.5) * this.TILE_SIZE_DEGREES_LAT;
     const tileSizeLng = this.getTileLngSizeAtLat(representativeLat);
     const tileX = Math.floor(lng / tileSizeLng);
-    // FIX: Corrected a typo using the defined `tileY` variable instead of an undefined `y`.
     return `${tileX},${tileY}`;
+  }
+
+  private applyDailyProgress(daily: DailyProgress | undefined): void {
+    if (daily?.date === todayString()) {
+      this.dailyTileIds.set(new Set(daily.tileIds || []));
+      this.dailyDistanceMeters.set(daily.distanceMeters || 0);
+      this.lastSavedDistanceMeters = daily.distanceMeters || 0;
+      console.log(`📅 [Progress] daily restored: ${daily.tileIds?.length ?? 0} tiles, ${daily.distanceMeters}m`);
+    } else if (daily?.date && daily.date !== todayString()) {
+      // New day — reset daily stats
+      this.dailyTileIds.set(new Set());
+      this.dailyDistanceMeters.set(0);
+      this.lastSavedDistanceMeters = 0;
+      console.log(`📅 [Progress] new day detected, daily stats reset`);
+    }
   }
 
   private loadFromLocalStorage(): void {
     try {
       const savedData = localStorage.getItem(STORAGE_KEY);
       if (savedData) {
-        const data = JSON.parse(savedData);
+        const data = JSON.parse(savedData) as ProgressData;
         this.visitedTiles.set(new Set(data.visitedTiles || []));
         this.unlockedAchievements.set(new Set(data.unlockedAchievements || []));
+        this.applyDailyProgress(data.dailyProgress);
       }
     } catch (e) {
       console.error('Error loading progress from localStorage', e);
@@ -225,6 +251,11 @@ export class ProgressService {
       const data: ProgressData = {
         visitedTiles: Array.from(this.visitedTiles()),
         unlockedAchievements: Array.from(this.unlockedAchievements()),
+        dailyProgress: {
+          date: todayString(),
+          tileIds: Array.from(this.dailyTileIds()),
+          distanceMeters: Math.round(this.dailyDistanceMeters()),
+        },
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     } catch (e) {
@@ -235,6 +266,9 @@ export class ProgressService {
   public resetProgress(clearStorage: boolean = true): void {
     this.visitedTiles.set(new Set());
     this.unlockedAchievements.set(new Set());
+    this.dailyTileIds.set(new Set());
+    this.dailyDistanceMeters.set(0);
+    this.lastSavedDistanceMeters = 0;
     this.lastPosition = null;
     if (clearStorage) {
       try {
@@ -270,7 +304,6 @@ export class ProgressService {
       return;
     }
 
-    // Snapshot tiles NOW — before any async gap where new tiles might be added
     const tilesToSave = Array.from(this.visitedTiles());
     const tileCount = tilesToSave.length;
     console.log(`💾 [Progress] saving ${tileCount} tiles to Firestore...`);
@@ -278,13 +311,17 @@ export class ProgressService {
       const data: ProgressData = {
         visitedTiles: tilesToSave,
         unlockedAchievements: Array.from(this.unlockedAchievements()),
+        dailyProgress: {
+          date: todayString(),
+          tileIds: Array.from(this.dailyTileIds()),
+          distanceMeters: Math.round(this.dailyDistanceMeters()),
+        },
       };
       const progressDocRef = doc(this.db, 'users', user.uid, 'progress', 'main');
       await setDoc(progressDocRef, data, { merge: true });
       console.log(`✅ [Progress] saved ${tileCount} tiles to Firestore`);
-      // If tiles were added while save was in-flight, schedule another save
       if (this.visitedTiles().size > tileCount) {
-        console.log(`🔄 [Progress] ${this.visitedTiles().size - tileCount} new tiles added during save → re-saving`);
+        console.log(`🔄 [Progress] new tiles added during save → re-saving`);
         this.saveProgress();
       }
     } catch (e) {
