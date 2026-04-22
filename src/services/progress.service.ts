@@ -31,12 +31,17 @@ export class ProgressService {
   discoveredTilesCount = computed(() => this.visitedTiles().size);
 
   private sessionDistanceMeters = signal(0);
+  private sessionTilesStart = 0; // tile count at session start, set after Firestore loads
 
   sessionDistance = computed(() => {
     const m = this.sessionDistanceMeters();
     if (m < 1000) return `${Math.round(m)} m`;
     return `${(m / 1000).toFixed(2)} km`;
   });
+
+  sessionTilesCount = computed(() =>
+    Math.max(0, this.visitedTiles().size - this.sessionTilesStart)
+  );
 
   public readonly TILE_SIZE_DEGREES_LAT = 0.0005;
 
@@ -102,6 +107,10 @@ export class ProgressService {
                   const merged = new Set(existing);
                   (data.visitedTiles || []).forEach((t: string) => merged.add(t));
                   console.log(`☁️ [Progress] Firestore snapshot: ${data.visitedTiles?.length ?? 0} cloud tiles merged → total ${merged.size}`);
+                  // Lock the session baseline once after the first cloud sync.
+                  if (this.sessionTilesStart === 0) {
+                    this.sessionTilesStart = merged.size;
+                  }
                   return merged;
                 });
                 this.unlockedAchievements.update(existing => {
