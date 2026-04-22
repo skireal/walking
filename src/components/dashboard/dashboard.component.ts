@@ -85,10 +85,18 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
   }
 
   private initMap(): void {
+    // If GPS already fired during splash, start centered on the user.
+    // Otherwise fall back to London as a placeholder until first fix arrives.
+    const existingPos = this.locationService.position();
+    const initialCenter: [number, number] = existingPos
+      ? [existingPos.coords.latitude, existingPos.coords.longitude]
+      : [51.5074, -0.1278];
+    const initialZoom = existingPos ? 17 : 13;
+
     this.map = L.map('map', {
       zoomControl: false,
       minZoom: 3,
-    }).setView([51.5074, -0.1278], 13);
+    }).setView(initialCenter, initialZoom);
 
     L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
