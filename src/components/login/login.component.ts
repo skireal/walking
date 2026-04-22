@@ -18,6 +18,7 @@ export class LoginComponent {
 
   email = signal('');
   password = signal('');
+  showPassword = signal(false);
   error = signal<string | null>(null);
   isLoading = signal(false);
 
