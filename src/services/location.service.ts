@@ -25,6 +25,15 @@ export class LocationService {
   private destroyRef = inject(DestroyRef);
   private progressService = inject(ProgressService);
 
+  // Timestamp of the last position handled by live BackgroundGeolocation.
+  // Persisted to localStorage so flushLocationBuffer() can skip positions
+  // already counted in the previous live session (prevents double-counting).
+  private lastLiveTimestamp = 0;
+  private readonly LIVE_TIMESTAMP_KEY = 'walker_last_live_ts';
+  // Buffer positions within this window of lastLiveTimestamp are treated
+  // as already-counted (BG and LocationBuffer fire ms apart for same event).
+  private readonly LIVE_TS_GRACE_MS = 2000;
+
   constructor() {
     // Следим за точностью позиции
     effect(() => {
@@ -85,6 +94,11 @@ export class LocationService {
 
   private startNativeWatching(): void {
     this.status.set('initializing');
+
+    // Load persisted live timestamp — used in flushLocationBuffer to skip
+    // positions already counted by the previous live session.
+    this.lastLiveTimestamp = parseInt(localStorage.getItem(this.LIVE_TIMESTAMP_KEY) || '0', 10);
+    console.log(`🕐 [LocationService] lastLiveTimestamp: ${this.lastLiveTimestamp ? new Date(this.lastLiveTimestamp).toISOString() : 'none'}`);
 
     // Запускаем буферизацию координат на нативной стороне
     console.log('🚀 [LocationService] Starting native location buffer...');
@@ -156,13 +170,23 @@ export class LocationService {
 
       let newTiles = 0;
       let skippedAccuracy = 0;
+      let skippedAlreadyLive = 0;
+      let countedWithDistance = 0;
       const tilesBefore = this.progressService.visitedTiles().size;
+      const liveThreshold = this.lastLiveTimestamp;
 
       for (const loc of parsed) {
         const pos = this.buildPosition(loc.latitude, loc.longitude, loc.accuracy, loc.time, loc.bearing ?? null, loc.speed ?? null, loc.altitude ?? null);
         if (loc.accuracy <= this.accuracyThreshold) {
+          // Positions within the live-threshold window were already processed by
+          // BackgroundGeolocation — skip distance to avoid double-counting.
+          // Positions after the threshold happened while the app was killed → count fully.
+          const trackDistance = loc.time > liveThreshold + this.LIVE_TS_GRACE_MS;
+          if (!trackDistance) skippedAlreadyLive++;
+          else countedWithDistance++;
+
           const before = this.progressService.visitedTiles().size;
-          this.progressService.updatePosition(pos, false);
+          this.progressService.updatePosition(pos, trackDistance);
           if (this.progressService.visitedTiles().size > before) newTiles++;
         } else {
           skippedAccuracy++;
@@ -178,7 +202,8 @@ export class LocationService {
       console.log(
         `✅ [LocationBuffer] flush complete — total: ${parsed.length} | ` +
         `low-accuracy skipped: ${skippedAccuracy} | ` +
-        `sent to progress: ${parsed.length - skippedAccuracy} | ` +
+        `already-live skipped: ${skippedAlreadyLive} | ` +
+        `post-kill with distance: ${countedWithDistance} | ` +
         `new tiles: ${newTiles} | tiles: ${tilesBefore} → ${tilesAfter}`
       );
     } catch (err) {
@@ -208,6 +233,13 @@ export class LocationService {
     altitude: number | null,
   ): void {
     const pos = this.buildPosition(latitude, longitude, accuracy, time, heading, speed, altitude);
+
+    // Track the latest live timestamp so flushLocationBuffer() can skip
+    // positions that were already counted in this session.
+    if (time > this.lastLiveTimestamp) {
+      this.lastLiveTimestamp = time;
+      localStorage.setItem(this.LIVE_TIMESTAMP_KEY, time.toString());
+    }
 
     this.position.set(pos);
 
