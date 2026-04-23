@@ -76,9 +76,11 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
 
   private readonly onVisibilityChange = (): void => {
     if (document.visibilityState === 'visible') {
-      // Don't recenter immediately — position signal may still hold the pre-background
-      // value. Set a flag so the effect recenters on the first incoming position
-      // update (either from the buffer flush or live BackgroundGeolocation).
+      // Recenter immediately with the last known position (handles the case where
+      // the user hasn't moved and the buffer is empty — no new position will arrive).
+      this.recenterMap();
+      // Also set a flag so the effect recenters again on the first fresh position
+      // update from the buffer flush (if the user walked while backgrounded).
       this.shouldRecenterOnNextPosition = true;
     }
   };
