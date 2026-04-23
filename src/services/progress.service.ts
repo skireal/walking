@@ -221,10 +221,21 @@ export class ProgressService {
 
   private applyDailyProgress(daily: DailyProgress | undefined): void {
     if (daily?.date === todayString()) {
-      this.dailyTileIds.set(new Set(daily.tileIds || []));
-      this.dailyDistanceMeters.set(daily.distanceMeters || 0);
-      this.lastSavedDistanceMeters = daily.distanceMeters || 0;
-      console.log(`📅 [Progress] daily restored: ${daily.tileIds?.length ?? 0} tiles, ${daily.distanceMeters}m`);
+      // Merge tile IDs — local and cloud may each have tiles the other doesn't
+      // (e.g. buffer-discovered tiles get overwritten by an older Firestore snapshot)
+      this.dailyTileIds.update(existing => {
+        const merged = new Set(existing);
+        (daily.tileIds || []).forEach(id => merged.add(id));
+        return merged;
+      });
+      // Take the higher distance value — distance only grows during the day,
+      // so the larger number is always more accurate
+      const incoming = daily.distanceMeters || 0;
+      if (incoming > this.dailyDistanceMeters()) {
+        this.dailyDistanceMeters.set(incoming);
+        this.lastSavedDistanceMeters = incoming;
+      }
+      console.log(`📅 [Progress] daily merged: ${this.dailyTileIds().size} tiles, ${this.dailyDistanceMeters()}m`);
     } else if (daily?.date && daily.date !== todayString()) {
       // New day — reset daily stats
       this.dailyTileIds.set(new Set());
