@@ -25,6 +25,7 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
   private isMapInitialized = signal(false);
   private userMarker: any;
   private fogLayer: any;
+  private shouldRecenterOnNextPosition = false;
 
   locationStatus = this.locationService.status;
 
@@ -50,6 +51,10 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
 
         if (this.userMarker) {
           this.userMarker.setLatLng(newPoint);
+          if (this.shouldRecenterOnNextPosition) {
+            this.shouldRecenterOnNextPosition = false;
+            this.map.setView(newPoint, 17);
+          }
         } else {
           this.map.setView(newPoint, 17);
           this.userMarker = L.marker(newPoint).addTo(this.map);
@@ -71,7 +76,10 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
 
   private readonly onVisibilityChange = (): void => {
     if (document.visibilityState === 'visible') {
-      this.recenterMap();
+      // Don't recenter immediately — position signal may still hold the pre-background
+      // value. Set a flag so the effect recenters on the first incoming position
+      // update (either from the buffer flush or live BackgroundGeolocation).
+      this.shouldRecenterOnNextPosition = true;
     }
   };
 
