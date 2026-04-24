@@ -60,6 +60,11 @@ export class LocationService {
    */
   waitForFirstFix(timeoutMs = 10_000): Promise<void> {
     return new Promise((resolve) => {
+      // Declare with let first so done() can safely call clearInterval/clearTimeout
+      // even if check() triggers done() synchronously before the assignments below.
+      let interval: ReturnType<typeof setInterval> | undefined;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+
       const done = () => {
         clearInterval(interval);
         clearTimeout(timer);
@@ -72,8 +77,8 @@ export class LocationService {
         }
       };
       check(); // resolve immediately if already in a final state
-      const interval = setInterval(check, 150);
-      const timer = setTimeout(done, timeoutMs);
+      interval = setInterval(check, 150);
+      timer = setTimeout(done, timeoutMs);
     });
   }
 
