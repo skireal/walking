@@ -100,8 +100,12 @@ export class ProgressService {
       if (user) {
         // Load localStorage first as crash-safe seed,
         // then Firestore snapshot will merge on top.
-        this.resetProgress(false);
-        this.loadFromLocalStorage();
+        // Wrapped in untracked() so signal reads inside resetProgress/loadFromLocalStorage
+        // don't create tracking dependencies that would re-trigger this effect.
+        untracked(() => {
+          this.resetProgress(false);
+          this.loadFromLocalStorage();
+        });
 
         const progressDocRef = doc(this.db, 'users', user.uid, 'progress', 'main');
         this.progressUnsubscribe = onSnapshot(
@@ -131,8 +135,10 @@ export class ProgressService {
           }
         );
       } else {
-        this.resetProgress(false);
-        this.loadFromLocalStorage();
+        untracked(() => {
+          this.resetProgress(false);
+          this.loadFromLocalStorage();
+        });
       }
     });
   }
