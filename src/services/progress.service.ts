@@ -145,7 +145,14 @@ export class ProgressService {
 
   updatePosition(pos: GeolocationPosition, trackDistance: boolean = true): void {
     const speed = pos.coords.speed;
-    if (speed !== null && speed > MAX_SPEED_MS) return;
+
+    if (speed !== null && speed > MAX_SPEED_MS) {
+      // Clearly vehicle speed — skip distance and tile discovery.
+      // Advance lastPosition so when the device slows back to walking speed,
+      // the effective-speed check below has a recent reference point.
+      if (trackDistance) this.lastPosition = pos;
+      return;
+    }
 
     const lat = pos.coords.latitude;
     const lng = pos.coords.longitude;
@@ -158,6 +165,19 @@ export class ProgressService {
         const distanceChange = lastLatLng.distanceTo(newLatLng);
 
         if (distanceChange < MIN_DISTANCE_THRESHOLD_METERS) return;
+
+        // Effective speed check: catches vehicle movement where GPS speed is null
+        // or lags (e.g. metro decelerating into a station, speed briefly < MAX_SPEED_MS
+        // but the actual displacement from the last tracked point is vehicle-scale).
+        const timeDeltaSec = (pos.timestamp - this.lastPosition.timestamp) / 1000;
+        if (timeDeltaSec > 0) {
+          const effectiveSpeed = distanceChange / timeDeltaSec;
+          if (effectiveSpeed > MAX_SPEED_MS) {
+            console.log(`🚇 [Progress] effective speed ${effectiveSpeed.toFixed(1)} m/s — skipping`);
+            this.lastPosition = pos;
+            return;
+          }
+        }
 
         this.dailyDistanceMeters.update(d => d + distanceChange);
 
