@@ -11,9 +11,10 @@
     <link rel="manifest" href="manifest.json" />
     <meta name="theme-color" content="#1f2937" />
 
-    <!-- Inter font — non-blocking, fallback to system font if offline -->
+    <!-- Inter font — loaded non-blocking so offline launch is never delayed -->
     <link rel="preconnect" href="https://rsms.me/" />
-    <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
+    <link rel="preload" href="https://rsms.me/inter/inter.css" as="style" onload="this.onload=null;this.rel='stylesheet'" />
+    <noscript><link rel="stylesheet" href="https://rsms.me/inter/inter.css" /></noscript>
 
     <!-- Firebase config перенесён в TypeScript (env), чтобы не светить ключ в HTML -->
 
