@@ -41,6 +41,24 @@ export class ProfileComponent {
 
   achievements = this.achievementService.achievements;
 
+  logCopied = signal(false);
+
+  startLog(): void {
+    this.progressService.clearPosLog();
+  }
+
+  async copyLog(): Promise<void> {
+    const log = this.progressService.getPosLog();
+    try {
+      await navigator.clipboard.writeText(log);
+      this.logCopied.set(true);
+      setTimeout(() => this.logCopied.set(false), 2000);
+    } catch {
+      // Fallback: show in alert so user can copy manually
+      alert(log.slice(0, 3000) + (log.length > 3000 ? '\n...(truncated)' : ''));
+    }
+  }
+
   async logout(): Promise<void> {
     try {
       await this.authService.logout();

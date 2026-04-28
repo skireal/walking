@@ -57,6 +57,48 @@ export class ProgressService {
 
   public readonly TILE_SIZE_DEGREES_LAT = 0.0005;
 
+  // ── Debug position log ────────────────────────────────────────────────────
+  // Captures every incoming position with the reason it was counted or skipped.
+  // Written to localStorage so it survives a walk without DevTools attached.
+  // Header: ts_ms|lat|lng|gps_spd_ms|lp_lat|lp_lng|dist_m|dt_sec|eff_spd_ms|action|total_m
+  private _posLog: string[] = [];
+  private readonly POS_LOG_KEY = 'walker_pos_log';
+
+  private logPos(
+    action: string,
+    lat: number, lng: number,
+    gpsSpd: number | null,
+    lastPos: GeolocationPosition | null,
+    distM: number | null,
+    dtSec: number | null,
+    effSpd: number | null,
+    totalM: number,
+  ): void {
+    const f = (v: number | null, d = 2) => v === null ? 'null' : v.toFixed(d);
+    const lpLat = lastPos ? lastPos.coords.latitude.toFixed(5) : 'null';
+    const lpLng = lastPos ? lastPos.coords.longitude.toFixed(5) : 'null';
+    this._posLog.push(
+      `${Date.now()}|${lat.toFixed(5)}|${lng.toFixed(5)}|${f(gpsSpd)}|${lpLat}|${lpLng}|${f(distM)}|${f(dtSec)}|${f(effSpd)}|${action}|${totalM.toFixed(0)}`
+    );
+    if (this._posLog.length > 3000) this._posLog.shift();
+    if (this._posLog.length % 10 === 0) this._flushPosLog();
+  }
+
+  private _flushPosLog(): void {
+    try { localStorage.setItem(this.POS_LOG_KEY, this._posLog.join('\n')); } catch {}
+  }
+
+  getPosLog(): string {
+    this._flushPosLog();
+    return 'ts_ms|lat|lng|gps_spd_ms|lp_lat|lp_lng|dist_m|dt_sec|eff_spd_ms|action|total_m\n' + this._posLog.join('\n');
+  }
+
+  clearPosLog(): void {
+    this._posLog = [];
+    try { localStorage.removeItem(this.POS_LOG_KEY); } catch {}
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   private authService = inject(AuthService);
   private destroyRef = inject(DestroyRef);
   private db: Firestore | null = null;
@@ -146,16 +188,18 @@ export class ProgressService {
   updatePosition(pos: GeolocationPosition, trackDistance: boolean = true): void {
     const speed = pos.coords.speed;
 
+    const lat = pos.coords.latitude;
+    const lng = pos.coords.longitude;
+
     if (speed !== null && speed > MAX_SPEED_MS) {
       // Clearly vehicle speed — skip distance and tile discovery.
       // Advance lastPosition so when the device slows back to walking speed,
       // the effective-speed check below has a recent reference point.
+      this.logPos('SKIP_GPS_SPD', lat, lng, speed, this.lastPosition, null, null, null, this.dailyDistanceMeters());
       if (trackDistance) this.lastPosition = pos;
       return;
     }
 
-    const lat = pos.coords.latitude;
-    const lng = pos.coords.longitude;
     const newPoint: [number, number] = [lat, lng];
 
     if (trackDistance && this.lastPosition && typeof L !== 'undefined') {
@@ -164,21 +208,24 @@ export class ProgressService {
         const newLatLng = L.latLng(newPoint);
         const distanceChange = lastLatLng.distanceTo(newLatLng);
 
-        if (distanceChange < MIN_DISTANCE_THRESHOLD_METERS) return;
+        if (distanceChange < MIN_DISTANCE_THRESHOLD_METERS) {
+          this.logPos('SKIP_DIST', lat, lng, speed, this.lastPosition, distanceChange, null, null, this.dailyDistanceMeters());
+          return;
+        }
 
         // Effective speed check: catches vehicle movement where GPS speed is null
         // or lags (e.g. metro decelerating into a station, speed briefly < MAX_SPEED_MS
         // but the actual displacement from the last tracked point is vehicle-scale).
         const timeDeltaSec = (pos.timestamp - this.lastPosition.timestamp) / 1000;
-        if (timeDeltaSec > 0) {
-          const effectiveSpeed = distanceChange / timeDeltaSec;
-          if (effectiveSpeed > MAX_SPEED_MS) {
-            console.log(`🚇 [Progress] effective speed ${effectiveSpeed.toFixed(1)} m/s — skipping`);
-            this.lastPosition = pos;
-            return;
-          }
+        const effectiveSpeed = timeDeltaSec > 0 ? distanceChange / timeDeltaSec : null;
+        if (effectiveSpeed !== null && effectiveSpeed > MAX_SPEED_MS) {
+          this.logPos('SKIP_EFF_SPD', lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters());
+          console.log(`🚇 [Progress] effective speed ${effectiveSpeed.toFixed(1)} m/s — skipping`);
+          this.lastPosition = pos;
+          return;
         }
 
+        this.logPos('COUNT', lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters() + distanceChange);
         this.dailyDistanceMeters.update(d => d + distanceChange);
 
         // Save distance every 50m even if no new tiles were opened
