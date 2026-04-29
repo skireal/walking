@@ -80,17 +80,36 @@ export class ProgressService {
     this._posLog.push(
       `${Date.now()}|${lat.toFixed(5)}|${lng.toFixed(5)}|${f(gpsSpd)}|${lpLat}|${lpLng}|${f(distM)}|${f(dtSec)}|${f(effSpd)}|${action}|${totalM.toFixed(0)}`
     );
-    if (this._posLog.length > 3000) this._posLog.shift();
-    if (this._posLog.length % 10 === 0) this._flushPosLog();
+    if (this._posLog.length > 5000) this._posLog.shift();
+    if (this._posLog.length % 5 === 0) this._flushPosLog();
   }
 
   private _flushPosLog(): void {
     try { localStorage.setItem(this.POS_LOG_KEY, this._posLog.join('\n')); } catch {}
   }
 
+  // Called by LocationService BEFORE the accuracy filter — records every raw GPS callback.
+  // For RAW_* entries: last column = accuracy_m (not total_m).
+  logRawPos(
+    action: string, // 'RAW_LIVE_PASS' | 'RAW_LIVE_FAIL' | 'RAW_BUF_PASS' | 'RAW_BUF_FAIL'
+    lat: number,
+    lng: number,
+    speed: number | null,
+    accuracy: number,
+    posTimestamp: number,
+  ): void {
+    const f = (v: number | null, d = 2) => v === null ? 'null' : v.toFixed(d);
+    this._posLog.push(
+      `${posTimestamp}|${lat.toFixed(5)}|${lng.toFixed(5)}|${f(speed)}|null|null|null|null|null|${action}|${accuracy.toFixed(0)}`
+    );
+    if (this._posLog.length > 5000) this._posLog.shift();
+    if (this._posLog.length % 5 === 0) this._flushPosLog();
+  }
+
   getPosLog(): string {
     this._flushPosLog();
-    return 'ts_ms|lat|lng|gps_spd_ms|lp_lat|lp_lng|dist_m|dt_sec|eff_spd_ms|action|total_m\n' + this._posLog.join('\n');
+    // last column: total_m for COUNT/SKIP_* rows; accuracy_m for RAW_* rows
+    return 'ts_ms|lat|lng|gps_spd_ms|lp_lat|lp_lng|dist_m|dt_sec|eff_spd_ms|action|total_m_or_accuracy_m\n' + this._posLog.join('\n');
   }
 
   clearPosLog(): void {

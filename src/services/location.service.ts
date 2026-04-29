@@ -183,6 +183,9 @@ export class LocationService {
       for (const loc of parsed) {
         const pos = this.buildPosition(loc.latitude, loc.longitude, loc.accuracy, loc.time, loc.bearing ?? null, loc.speed ?? null, loc.altitude ?? null);
         if (loc.accuracy <= this.accuracyThreshold) {
+          // Log raw buffer position (passed accuracy).
+          this.progressService.logRawPos('RAW_BUF_PASS', loc.latitude, loc.longitude, loc.speed ?? null, loc.accuracy, loc.time);
+
           // Positions within the live-threshold window were already processed by
           // BackgroundGeolocation — skip distance to avoid double-counting.
           // Positions after the threshold happened while the app was killed → count fully.
@@ -194,6 +197,8 @@ export class LocationService {
           this.progressService.updatePosition(pos, trackDistance);
           if (this.progressService.visitedTiles().size > before) newTiles++;
         } else {
+          // Log raw buffer position (failed accuracy).
+          this.progressService.logRawPos('RAW_BUF_FAIL', loc.latitude, loc.longitude, loc.speed ?? null, loc.accuracy, loc.time);
           skippedAccuracy++;
         }
       }
@@ -238,6 +243,12 @@ export class LocationService {
     altitude: number | null,
   ): void {
     const pos = this.buildPosition(latitude, longitude, accuracy, time, heading, speed, altitude);
+
+    // Log every raw live GPS callback BEFORE any filtering.
+    this.progressService.logRawPos(
+      accuracy <= this.accuracyThreshold ? 'RAW_LIVE_PASS' : 'RAW_LIVE_FAIL',
+      latitude, longitude, speed, accuracy, time,
+    );
 
     // Track the latest live timestamp so flushLocationBuffer() can skip
     // positions that were already counted in this session.
