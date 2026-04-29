@@ -98,6 +98,7 @@ export class LocationService {
   // При открытии приложения буфер считывается и применяется к туману.
 
   private startNativeWatching(): void {
+    this.progressService.logEvent('TRACKING_START');
     this.status.set('initializing');
 
     // Load persisted live timestamp — used in flushLocationBuffer to skip
@@ -170,6 +171,8 @@ export class LocationService {
     try {
       const { locations } = await LocationBuffer.getAndClearBuffer();
       const parsed: BufferedLocation[] = JSON.parse(locations);
+      // Log resume event even if buffer is empty — proves the app woke up.
+      this.progressService.logEvent('APP_RESUME', parsed.length.toString());
       console.log(`📦 [LocationBuffer] flushing ${parsed.length} buffered locations`);
       if (parsed.length === 0) return;
 

@@ -88,6 +88,14 @@ export class ProgressService {
     try { localStorage.setItem(this.POS_LOG_KEY, this._posLog.join('\n')); } catch {}
   }
 
+  // Generic event log entry (TRACKING_START, APP_RESUME, DASH_SKIP_*, etc.).
+  // extra = any short string appended to last column.
+  logEvent(tag: string, extra = ''): void {
+    this._posLog.push(`${Date.now()}|null|null|null|null|null|null|null|null|${tag}|${extra}`);
+    if (this._posLog.length > 5000) this._posLog.shift();
+    this._flushPosLog();
+  }
+
   // Called by LocationService BEFORE the accuracy filter — records every raw GPS callback.
   // For RAW_* entries: last column = accuracy_m (not total_m).
   logRawPos(
