@@ -25,6 +25,7 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
   private isMapInitialized = signal(false);
   private userMarker: any;
   private fogLayer: any;
+  private pathLine: any;
   private shouldRecenterOnNextPosition = false;
 
   locationStatus = this.locationService.status;
@@ -62,6 +63,7 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
 
         if (this.locationService.hasGoodAccuracy()) {
           this.progressService.updatePosition(pos);
+          this.pathLine?.addLatLng([pos.coords.latitude, pos.coords.longitude]);
         } else {
           // Log accuracy drop visible to dashboard effect (live positions only).
           this.progressService.logEvent('DASH_SKIP_ACC', pos.coords.accuracy.toFixed(0));
@@ -123,6 +125,15 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
 
     this.fogLayer = this.createFogLayer();
     this.fogLayer.addTo(this.map);
+
+    // Path line — shows walked route; gaps reveal where tracking broke off.
+    this.pathLine = L.polyline([], {
+      color: '#f97316',  // orange-500 — stands out against the teal fog
+      weight: 3,
+      opacity: 0.85,
+      lineJoin: 'round',
+      lineCap: 'round',
+    }).addTo(this.map);
 
     // GPS may already be watching (started from AppComponent during splash).
     // Only call startWatching() if it hasn't been started yet.
