@@ -16,6 +16,8 @@ export type LocationStatus = 'idle' | 'tracking' | 'denied' | 'error' | 'initial
 export class LocationService {
   position = signal<GeolocationPosition | null>(null);
   status = signal<LocationStatus>('idle');
+  walkedPathLength = signal(0);
+  private _walkedPath: [number, number][] = [];
   private watching = false;
   private watchId: number | null = null;
   private nativeWatcherId: string | null = null;
@@ -180,6 +182,7 @@ export class LocationService {
       let skippedAccuracy = 0;
       let skippedAlreadyLive = 0;
       let countedWithDistance = 0;
+      let pathPointsAdded = 0;
       const tilesBefore = this.progressService.visitedTiles().size;
       const liveThreshold = this.lastLiveTimestamp;
 
@@ -188,6 +191,8 @@ export class LocationService {
         if (loc.accuracy <= this.accuracyThreshold) {
           // Log raw buffer position (passed accuracy).
           this.progressService.logRawPos('RAW_BUF_PASS', loc.latitude, loc.longitude, loc.speed ?? null, loc.accuracy, loc.time);
+          this._walkedPath.push([loc.latitude, loc.longitude]);
+          pathPointsAdded++;
 
           // Positions within the live-threshold window were already processed by
           // BackgroundGeolocation — skip distance to avoid double-counting.
@@ -207,6 +212,11 @@ export class LocationService {
       }
 
       const tilesAfter = this.progressService.visitedTiles().size;
+
+      // Уведомляем dashboard о всех новых точках пути из буфера одним батчем
+      if (pathPointsAdded > 0) {
+        this.walkedPathLength.update(n => n + pathPointsAdded);
+      }
 
       // Обновляем сигнал позиции последней точкой — для маркера на карте
       const last = parsed[parsed.length - 1];
@@ -263,6 +273,8 @@ export class LocationService {
     this.position.set(pos);
 
     if (accuracy <= this.accuracyThreshold) {
+      this._walkedPath.push([latitude, longitude]);
+      this.walkedPathLength.update(n => n + 1);
       if (this.status() !== 'tracking') {
         this.status.set('tracking');
         const now = Date.now();
@@ -370,6 +382,10 @@ export class LocationService {
         console.error('❌ Unknown geolocation error');
         this.status.set('error');
     }
+  }
+
+  getWalkedPath(): [number, number][] {
+    return this._walkedPath;
   }
 
   hasGoodAccuracy(): boolean {

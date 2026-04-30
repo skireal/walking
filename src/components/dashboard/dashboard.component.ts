@@ -26,6 +26,7 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
   private userMarker: any;
   private fogLayer: any;
   private pathLine: any;
+  private renderedPathLength = 0;
   private shouldRecenterOnNextPosition = false;
 
   locationStatus = this.locationService.status;
@@ -63,7 +64,6 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
 
         if (this.locationService.hasGoodAccuracy()) {
           this.progressService.updatePosition(pos);
-          this.pathLine?.addLatLng([pos.coords.latitude, pos.coords.longitude]);
         } else {
           // Log accuracy drop visible to dashboard effect (live positions only).
           this.progressService.logEvent('DASH_SKIP_ACC', pos.coords.accuracy.toFixed(0));
@@ -79,6 +79,18 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
       if (this.isMapInitialized()) {
         this.fogLayer?.redraw();
       }
+    });
+
+    // Draws walked path from LocationService — covers both live GPS and buffered positions.
+    // Uses an index so only new points are appended (no full redraw on every update).
+    effect(() => {
+      const len = this.locationService.walkedPathLength();
+      if (!this.isMapInitialized() || !this.pathLine) return;
+      const path = this.locationService.getWalkedPath();
+      for (let i = this.renderedPathLength; i < path.length; i++) {
+        this.pathLine.addLatLng(path[i]);
+      }
+      this.renderedPathLength = len;
     });
   }
 
