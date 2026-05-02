@@ -263,13 +263,6 @@ export class LocationService {
       latitude, longitude, speed, accuracy, time,
     );
 
-    // Track the latest live timestamp so flushLocationBuffer() can skip
-    // positions that were already counted in this session.
-    if (time > this.lastLiveTimestamp) {
-      this.lastLiveTimestamp = time;
-      localStorage.setItem(this.LIVE_TIMESTAMP_KEY, time.toString());
-    }
-
     this.position.set(pos);
 
     if (accuracy <= this.accuracyThreshold) {
@@ -386,6 +379,16 @@ export class LocationService {
 
   getWalkedPath(): [number, number][] {
     return this._walkedPath;
+  }
+
+  // Called by DashboardComponent after updatePosition() is actually executed.
+  // Only advances when Angular effects are running — ensures buffer positions
+  // from "effects-dead" background periods get trackDistance = true on flush.
+  markLiveTimestamp(time: number): void {
+    if (time > this.lastLiveTimestamp) {
+      this.lastLiveTimestamp = time;
+      localStorage.setItem(this.LIVE_TIMESTAMP_KEY, time.toString());
+    }
   }
 
   hasGoodAccuracy(): boolean {

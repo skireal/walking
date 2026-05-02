@@ -64,6 +64,7 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
 
         if (this.locationService.hasGoodAccuracy()) {
           this.progressService.updatePosition(pos);
+          this.locationService.markLiveTimestamp(pos.timestamp);
         } else {
           // Log accuracy drop visible to dashboard effect (live positions only).
           this.progressService.logEvent('DASH_SKIP_ACC', pos.coords.accuracy.toFixed(0));
