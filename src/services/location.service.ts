@@ -152,6 +152,8 @@ export class LocationService {
       (location: Location | undefined, error: CallbackError | undefined) => {
         if (error) {
           console.error('❌ [BackgroundGeolocation] error:', JSON.stringify(error));
+          const tag = error.code === 'NOT_AUTHORIZED' ? 'GPS_DENIED' : 'GPS_ERROR';
+          this.progressService.logEvent(tag, error.code ?? 'unknown');
           this.status.set(error.code === 'NOT_AUTHORIZED' ? 'denied' : 'error');
           return;
         }
@@ -266,6 +268,7 @@ export class LocationService {
       console.log(`✅ [LocationBuffer] flush complete — ${summary}`);
     } catch (err) {
       console.warn('⚠️ [LocationBuffer] flush failed:', err);
+      this.progressService.logEvent('BUF_FLUSH_ERROR', String(err));
     }
   }
 
