@@ -86,8 +86,12 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
             // would produce a single straight-line jump. Skip both updatePosition
             // and markLiveTimestamp so flushLocationBuffer() can count the actual
             // walked path step-by-step with trackDistance = true.
-            // gap value is in ms; divide by 1000 for readable seconds in the log.
-            this.progressService.logEvent('DASH_SKIP_BG_JUMP', (gap / 1000).toFixed(1) + 's');
+            // Log gap, accuracy, and landing coordinates for post-walk verification.
+            this.progressService.logEvent(
+              'DASH_SKIP_BG_JUMP',
+              `${(gap / 1000).toFixed(1)}s,acc=${pos.coords.accuracy.toFixed(0)}m,` +
+              `lat=${pos.coords.latitude.toFixed(5)},lng=${pos.coords.longitude.toFixed(5)}`,
+            );
           } else {
             this.progressService.updatePosition(pos);
             this.locationService.markLiveTimestamp(ts);

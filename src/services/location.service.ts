@@ -184,6 +184,7 @@ export class LocationService {
       let countedWithDistance = 0;
       let pathPointsAdded = 0;
       const tilesBefore = this.progressService.visitedTiles().size;
+      const distBefore = this.progressService.getDailyDistanceMeters();
       const liveThreshold = this.lastLiveTimestamp;
 
       // Log the live threshold at flush time. If the dashboard BG-jump fix is
@@ -222,6 +223,7 @@ export class LocationService {
       }
 
       const tilesAfter = this.progressService.visitedTiles().size;
+      const distAfter  = this.progressService.getDailyDistanceMeters();
 
       // Уведомляем dashboard о всех новых точках пути из буфера одним батчем
       if (pathPointsAdded > 0) {
@@ -232,10 +234,11 @@ export class LocationService {
       const last = parsed[parsed.length - 1];
       this.applyLocation(last.latitude, last.longitude, last.accuracy, last.time, last.bearing ?? null, last.speed ?? null, last.altitude ?? null);
 
+      const distAdded = Math.round(distAfter - distBefore);
       const summary =
         `total=${parsed.length},accSkip=${skippedAccuracy},` +
         `liveSkip=${skippedAlreadyLive},counted=${countedWithDistance},` +
-        `newTiles=${newTiles},tiles=${tilesBefore}->${tilesAfter}`;
+        `distAdded=${distAdded}m,newTiles=${newTiles},tiles=${tilesBefore}->${tilesAfter}`;
       this.progressService.logEvent('BUF_FLUSH_DONE', summary);
       console.log(`✅ [LocationBuffer] flush complete — ${summary}`);
     } catch (err) {

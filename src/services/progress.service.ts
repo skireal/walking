@@ -49,6 +49,9 @@ export class ProgressService {
 
   dailyTilesCount = computed(() => this.dailyTileIds().size);
 
+  /** Raw daily distance in metres — use for diagnostic snapshots in other services. */
+  getDailyDistanceMeters(): number { return this.dailyDistanceMeters(); }
+
   dailyDistance = computed(() => {
     const m = this.dailyDistanceMeters();
     if (m < 1000) return `${Math.round(m)} m`;
