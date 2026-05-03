@@ -232,13 +232,12 @@ export class LocationService {
       const last = parsed[parsed.length - 1];
       this.applyLocation(last.latitude, last.longitude, last.accuracy, last.time, last.bearing ?? null, last.speed ?? null, last.altitude ?? null);
 
-      console.log(
-        `✅ [LocationBuffer] flush complete — total: ${parsed.length} | ` +
-        `low-accuracy skipped: ${skippedAccuracy} | ` +
-        `already-live skipped: ${skippedAlreadyLive} | ` +
-        `post-kill with distance: ${countedWithDistance} | ` +
-        `new tiles: ${newTiles} | tiles: ${tilesBefore} → ${tilesAfter}`
-      );
+      const summary =
+        `total=${parsed.length},accSkip=${skippedAccuracy},` +
+        `liveSkip=${skippedAlreadyLive},counted=${countedWithDistance},` +
+        `newTiles=${newTiles},tiles=${tilesBefore}->${tilesAfter}`;
+      this.progressService.logEvent('BUF_FLUSH_DONE', summary);
+      console.log(`✅ [LocationBuffer] flush complete — ${summary}`);
     } catch (err) {
       console.warn('⚠️ [LocationBuffer] flush failed:', err);
     }
@@ -396,6 +395,7 @@ export class LocationService {
   // from "effects-dead" background periods get trackDistance = true on flush.
   markLiveTimestamp(time: number): void {
     if (time > this.lastLiveTimestamp) {
+      this.progressService.logEvent('LIVE_TS_ADV', time.toString());
       this.lastLiveTimestamp = time;
       localStorage.setItem(this.LIVE_TIMESTAMP_KEY, time.toString());
     }
