@@ -83,7 +83,7 @@ export class ProgressService {
     this._posLog.push(
       `${Date.now()}|${lat.toFixed(5)}|${lng.toFixed(5)}|${f(gpsSpd)}|${lpLat}|${lpLng}|${f(distM)}|${f(dtSec)}|${f(effSpd)}|${action}|${totalM.toFixed(0)}`
     );
-    if (this._posLog.length > 5000) this._posLog.shift();
+    if (this._posLog.length > 10000) this._posLog.shift();
     if (this._posLog.length % 5 === 0) this._flushPosLog();
   }
 
@@ -95,7 +95,7 @@ export class ProgressService {
   // extra = any short string appended to last column.
   logEvent(tag: string, extra = ''): void {
     this._posLog.push(`${Date.now()}|null|null|null|null|null|null|null|null|${tag}|${extra}`);
-    if (this._posLog.length > 5000) this._posLog.shift();
+    if (this._posLog.length > 10000) this._posLog.shift();
     this._flushPosLog();
   }
 
@@ -113,7 +113,7 @@ export class ProgressService {
     this._posLog.push(
       `${posTimestamp}|${lat.toFixed(5)}|${lng.toFixed(5)}|${f(speed)}|null|null|null|null|null|${action}|${accuracy.toFixed(0)}`
     );
-    if (this._posLog.length > 5000) this._posLog.shift();
+    if (this._posLog.length > 10000) this._posLog.shift();
     if (this._posLog.length % 5 === 0) this._flushPosLog();
   }
 

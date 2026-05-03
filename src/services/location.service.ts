@@ -230,8 +230,6 @@ export class LocationService {
       for (const loc of parsed) {
         const pos = this.buildPosition(loc.latitude, loc.longitude, loc.accuracy, loc.time, loc.bearing ?? null, loc.speed ?? null, loc.altitude ?? null);
         if (loc.accuracy <= this.accuracyThreshold) {
-          // Log raw buffer position (passed accuracy).
-          this.progressService.logRawPos('RAW_BUF_PASS', loc.latitude, loc.longitude, loc.speed ?? null, loc.accuracy, loc.time);
           this._walkedPath.push([loc.latitude, loc.longitude]);
           pathPointsAdded++;
 
@@ -300,11 +298,11 @@ export class LocationService {
   ): void {
     const pos = this.buildPosition(latitude, longitude, accuracy, time, heading, speed, altitude);
 
-    // Log every raw live GPS callback BEFORE any filtering.
-    this.progressService.logRawPos(
-      accuracy <= this.accuracyThreshold ? 'RAW_LIVE_PASS' : 'RAW_LIVE_FAIL',
-      latitude, longitude, speed, accuracy, time,
-    );
+    // Only log raw live callbacks that FAILED accuracy — passed positions are
+    // already visible as COUNT/SKIP_* entries from updatePosition().
+    if (accuracy > this.accuracyThreshold) {
+      this.progressService.logRawPos('RAW_LIVE_FAIL', latitude, longitude, speed, accuracy, time);
+    }
 
     this.position.set(pos);
 
