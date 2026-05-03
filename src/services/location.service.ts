@@ -119,10 +119,14 @@ export class LocationService {
     console.log('🚀 [LocationService] Starting native location buffer...');
     LocationBuffer.startBuffering()
       .then(() => console.log('✅ [LocationBuffer] startBuffering OK'))
-      .catch((err: unknown) => console.warn('⚠️ [LocationBuffer] startBuffering FAILED:', err));
+      .catch((err: unknown) => {
+        console.warn('⚠️ [LocationBuffer] startBuffering FAILED:', err);
+        // Critical: buffer is not running — all background positions will be lost.
+        this.progressService.logEvent('BUF_START_FAIL', String(err));
+      });
 
     // Сбрасываем буфер сразу — на случай если приложение открылось после прогулки (холодный старт)
-    this.flushLocationBuffer();
+    this.flushLocationBuffer('cold');
 
     // Подписываемся на resume — но только один раз. Удаляем старый слушатель перед регистрацией нового.
     if (this.appResumeListener) {
@@ -131,7 +135,7 @@ export class LocationService {
     }
     App.addListener('resume', () => {
       console.log('📱 [App] resumed — flushing location buffer...');
-      this.flushLocationBuffer();
+      this.flushLocationBuffer('resume');
     }).then(handle => {
       this.appResumeListener = handle;
     });
@@ -176,12 +180,16 @@ export class LocationService {
   // Важно: progressService.updatePosition() вызывается напрямую для каждой точки,
   // минуя сигнал position — иначе Angular батчит 196 set() в один effect-вызов
   // и записывается только последний тайл.
-  private async flushLocationBuffer(): Promise<void> {
+  private async flushLocationBuffer(trigger: 'cold' | 'resume' = 'resume'): Promise<void> {
     try {
       const { locations } = await LocationBuffer.getAndClearBuffer();
       const parsed: BufferedLocation[] = JSON.parse(locations);
-      // Log resume event even if buffer is empty — proves the app woke up.
-      this.progressService.logEvent('APP_RESUME', parsed.length.toString());
+      // Distinguish cold-start flush from resume flush so the log shows the
+      // full app lifecycle (COLD_START_FLUSH on first open, APP_RESUME on wake).
+      this.progressService.logEvent(
+        trigger === 'cold' ? 'COLD_START_FLUSH' : 'APP_RESUME',
+        parsed.length.toString(),
+      );
       console.log(`📦 [LocationBuffer] flushing ${parsed.length} buffered locations`);
       if (parsed.length === 0) return;
 
@@ -203,6 +211,14 @@ export class LocationService {
         'BUF_FLUSH_TS',
         `live=${liveThreshold},first=${firstBufTs},last=${lastBufTs}`,
       );
+      // Warn if the live threshold is newer than ALL buffer positions — this means
+      // every position will get trackDistance=false and no distance will be counted.
+      if (liveThreshold >= lastBufTs - this.LIVE_TS_GRACE_MS) {
+        this.progressService.logEvent(
+          'BUF_ALL_SKIPPED_WARN',
+          `live=${liveThreshold},last=${lastBufTs},total=${parsed.length}`,
+        );
+      }
 
       for (const loc of parsed) {
         const pos = this.buildPosition(loc.latitude, loc.longitude, loc.accuracy, loc.time, loc.bearing ?? null, loc.speed ?? null, loc.altitude ?? null);
@@ -356,6 +372,7 @@ export class LocationService {
   // ── Общее ──────────────────────────────────────────────────────────────────
 
   stopWatching(): void {
+    this.progressService.logEvent('TRACKING_STOP');
     this.watching = false;
     if (Capacitor.isNativePlatform()) {
       if (this.nativeWatcherId) {

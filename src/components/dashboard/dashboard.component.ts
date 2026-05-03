@@ -146,6 +146,10 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
   }
 
   private readonly onVisibilityChange = (): void => {
+    if (document.visibilityState === 'hidden') {
+      this.progressService.logEvent('VISIBILITY_HIDDEN');
+      return;
+    }
     if (document.visibilityState === 'visible') {
       this.progressService.logEvent('VISIBILITY_VISIBLE');
       // Recenter immediately with the last known position (handles the case where
