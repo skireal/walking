@@ -35,6 +35,9 @@ export class LocationService {
   // Buffer positions within this window of lastLiveTimestamp are treated
   // as already-counted (BG and LocationBuffer fire ms apart for same event).
   private readonly LIVE_TS_GRACE_MS = 2000;
+  // Throttle LIVE_TS_ADV log entries — one per minute is enough.
+  private lastLiveTsAdvLog = 0;
+  private readonly LIVE_TS_ADV_LOG_INTERVAL_MS = 60_000;
 
   constructor() {
     // Следим за точностью позиции
@@ -107,6 +110,10 @@ export class LocationService {
     // positions already counted by the previous live session.
     this.lastLiveTimestamp = parseInt(localStorage.getItem(this.LIVE_TIMESTAMP_KEY) || '0', 10);
     console.log(`🕐 [LocationService] lastLiveTimestamp: ${this.lastLiveTimestamp ? new Date(this.lastLiveTimestamp).toISOString() : 'none'}`);
+    // Persist to session log so we can verify the loaded value is sane.
+    // If this is close to "now" it means a previous session didn't finish
+    // cleanly and buffer positions from this session may be skipped.
+    this.progressService.logEvent('LIVE_TS_LOAD', this.lastLiveTimestamp.toString());
 
     // Запускаем буферизацию координат на нативной стороне
     console.log('🚀 [LocationService] Starting native location buffer...');
@@ -398,7 +405,13 @@ export class LocationService {
   // from "effects-dead" background periods get trackDistance = true on flush.
   markLiveTimestamp(time: number): void {
     if (time > this.lastLiveTimestamp) {
-      this.progressService.logEvent('LIVE_TS_ADV', time.toString());
+      // Throttle log to once per minute — fires every few seconds during normal
+      // walking and would crowd out important events in the session log.
+      const now = Date.now();
+      if (now - this.lastLiveTsAdvLog >= this.LIVE_TS_ADV_LOG_INTERVAL_MS) {
+        this.progressService.logEvent('LIVE_TS_ADV', time.toString());
+        this.lastLiveTsAdvLog = now;
+      }
       this.lastLiveTimestamp = time;
       localStorage.setItem(this.LIVE_TIMESTAMP_KEY, time.toString());
     }

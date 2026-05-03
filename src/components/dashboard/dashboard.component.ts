@@ -36,6 +36,9 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
   // accurate step-by-step buffer data instead.
   private lastEffectTimestamp = 0;
   private readonly BG_JUMP_THRESHOLD_MS = 15_000;
+  // Last good-accuracy position the effect counted — logged as departure point
+  // in DASH_SKIP_BG_JUMP so we can see the full A→B skip on the map.
+  private lastCountedLatLng: [number, number] | null = null;
 
   locationStatus = this.locationService.status;
 
@@ -79,6 +82,10 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
         const isBackgroundRecovery = gap > this.BG_JUMP_THRESHOLD_MS;
         this.lastEffectTimestamp = ts;
 
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const acc = pos.coords.accuracy;
+
         if (this.locationService.hasGoodAccuracy()) {
           if (isBackgroundRecovery) {
             // The effect just returned from background — the live position signal
@@ -86,25 +93,31 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
             // would produce a single straight-line jump. Skip both updatePosition
             // and markLiveTimestamp so flushLocationBuffer() can count the actual
             // walked path step-by-step with trackDistance = true.
-            // Log gap, accuracy, and landing coordinates for post-walk verification.
+            // Log gap, departure coords, landing coords, and accuracy so the skip
+            // can be verified on the map post-walk.
+            const from = this.lastCountedLatLng
+              ? `${this.lastCountedLatLng[0].toFixed(5)},${this.lastCountedLatLng[1].toFixed(5)}`
+              : 'unknown';
             this.progressService.logEvent(
               'DASH_SKIP_BG_JUMP',
-              `${(gap / 1000).toFixed(1)}s,acc=${pos.coords.accuracy.toFixed(0)}m,` +
-              `lat=${pos.coords.latitude.toFixed(5)},lng=${pos.coords.longitude.toFixed(5)}`,
+              `${(gap / 1000).toFixed(1)}s,from=${from},` +
+              `to=${lat.toFixed(5)},${lng.toFixed(5)},acc=${acc.toFixed(0)}m`,
             );
           } else {
             this.progressService.updatePosition(pos);
             this.locationService.markLiveTimestamp(ts);
-            // Log first live count after a recovery so we can confirm normal
-            // tracking resumed (only when gap was non-zero, i.e. not the very
-            // first position of the session).
+            this.lastCountedLatLng = [lat, lng];
+            // Log first live count after a gap so we can confirm normal tracking
+            // resumed (skip gap=0 which is the very first position of the session).
             if (gap > 0) {
               this.progressService.logEvent('DASH_LIVE_RESUME', (gap / 1000).toFixed(1) + 's');
             }
           }
         } else {
-          // Log accuracy drop visible to dashboard effect (live positions only).
-          this.progressService.logEvent('DASH_SKIP_ACC', pos.coords.accuracy.toFixed(0) + 'm');
+          // Log accuracy drop. If this is also a background-recovery position,
+          // tag it so we know the BG period ended with low accuracy.
+          const tag = isBackgroundRecovery ? 'DASH_SKIP_BG_ACC' : 'DASH_SKIP_ACC';
+          this.progressService.logEvent(tag, `${acc.toFixed(0)}m,gap=${(gap / 1000).toFixed(1)}s`);
         }
       } else if (pos && !this.isMapInitialized()) {
         // Position arrived before map was ready — dropped silently otherwise.
@@ -134,6 +147,7 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
 
   private readonly onVisibilityChange = (): void => {
     if (document.visibilityState === 'visible') {
+      this.progressService.logEvent('VISIBILITY_VISIBLE');
       // Recenter immediately with the last known position (handles the case where
       // the user hasn't moved and the buffer is empty — no new position will arrive).
       this.recenterMap();
