@@ -174,6 +174,7 @@ export class LocationService {
       console.log(`✅ [BackgroundGeolocation] watcher started, id=${id}`);
     }).catch((err: unknown) => {
       console.error('❌ [BackgroundGeolocation] Failed to start:', err);
+      this.progressService.logEvent('BG_WATCHER_FAIL', String(err));
       this.status.set('error');
     });
   }

@@ -39,6 +39,10 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
   // Last good-accuracy position the effect counted — logged as departure point
   // in DASH_SKIP_BG_JUMP so we can see the full A→B skip on the map.
   private lastCountedLatLng: [number, number] | null = null;
+  // Set to true after a BG skip; cleared after logging the first successful
+  // DASH_LIVE_RESUME so the tag fires exactly once per recovery, not on
+  // every subsequent position.
+  private pendingLiveResume = false;
 
   locationStatus = this.locationService.status;
 
@@ -103,13 +107,16 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
               `${(gap / 1000).toFixed(1)}s,from=${from},` +
               `to=${lat.toFixed(5)},${lng.toFixed(5)},acc=${acc.toFixed(0)}m`,
             );
+            this.pendingLiveResume = true;
           } else {
             this.progressService.updatePosition(pos);
             this.locationService.markLiveTimestamp(ts);
             this.lastCountedLatLng = [lat, lng];
-            // Log first live count after a gap so we can confirm normal tracking
-            // resumed (skip gap=0 which is the very first position of the session).
-            if (gap > 0) {
+            // Log exactly once after returning from background to confirm normal
+            // tracking resumed. pendingLiveResume is set by DASH_SKIP_BG_JUMP /
+            // DASH_SKIP_BG_ACC so this fires once per recovery, not every step.
+            if (this.pendingLiveResume) {
+              this.pendingLiveResume = false;
               this.progressService.logEvent('DASH_LIVE_RESUME', (gap / 1000).toFixed(1) + 's');
             }
           }
@@ -118,6 +125,7 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
           // tag it so we know the BG period ended with low accuracy.
           const tag = isBackgroundRecovery ? 'DASH_SKIP_BG_ACC' : 'DASH_SKIP_ACC';
           this.progressService.logEvent(tag, `${acc.toFixed(0)}m,gap=${(gap / 1000).toFixed(1)}s`);
+          if (isBackgroundRecovery) this.pendingLiveResume = true;
         }
       } else if (pos && !this.isMapInitialized()) {
         // Position arrived before map was ready — dropped silently otherwise.
