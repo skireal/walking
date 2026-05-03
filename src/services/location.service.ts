@@ -186,6 +186,16 @@ export class LocationService {
       const tilesBefore = this.progressService.visitedTiles().size;
       const liveThreshold = this.lastLiveTimestamp;
 
+      // Log the live threshold at flush time. If the dashboard BG-jump fix is
+      // working correctly, this value should be from the PREVIOUS session and
+      // all buffer positions should get trackDistance = true (countedWithDistance).
+      const firstBufTs = parsed[0].time;
+      const lastBufTs  = parsed[parsed.length - 1].time;
+      this.progressService.logEvent(
+        'BUF_FLUSH_TS',
+        `live=${liveThreshold},first=${firstBufTs},last=${lastBufTs}`,
+      );
+
       for (const loc of parsed) {
         const pos = this.buildPosition(loc.latitude, loc.longitude, loc.accuracy, loc.time, loc.bearing ?? null, loc.speed ?? null, loc.altitude ?? null);
         if (loc.accuracy <= this.accuracyThreshold) {

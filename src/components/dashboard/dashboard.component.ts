@@ -28,6 +28,14 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
   private pathLine: any;
   private renderedPathLength = 0;
   private shouldRecenterOnNextPosition = false;
+  // Timestamp of the last position the Angular effect actually processed.
+  // Used to detect background-recovery jumps: if the gap between the last
+  // processed position and the current one exceeds this threshold, the app
+  // was likely backgrounded and the single live update would be a straight-line
+  // jump. In that case we skip counting and let flushLocationBuffer() use the
+  // accurate step-by-step buffer data instead.
+  private lastEffectTimestamp = 0;
+  private readonly BG_JUMP_THRESHOLD_MS = 15_000;
 
   locationStatus = this.locationService.status;
 
@@ -62,12 +70,37 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
           this.userMarker = L.marker(newPoint).addTo(this.map);
         }
 
+        // Detect whether the app was backgrounded between this and the last
+        // effect-processed position. All positions (good or bad accuracy) advance
+        // the timestamp so a temporary GPS drop in the foreground doesn't
+        // incorrectly trigger background-recovery mode.
+        const ts = pos.timestamp;
+        const gap = this.lastEffectTimestamp > 0 ? ts - this.lastEffectTimestamp : 0;
+        const isBackgroundRecovery = gap > this.BG_JUMP_THRESHOLD_MS;
+        this.lastEffectTimestamp = ts;
+
         if (this.locationService.hasGoodAccuracy()) {
-          this.progressService.updatePosition(pos);
-          this.locationService.markLiveTimestamp(pos.timestamp);
+          if (isBackgroundRecovery) {
+            // The effect just returned from background — the live position signal
+            // skipped ahead to the latest BackgroundGeolocation callback, which
+            // would produce a single straight-line jump. Skip both updatePosition
+            // and markLiveTimestamp so flushLocationBuffer() can count the actual
+            // walked path step-by-step with trackDistance = true.
+            // gap value is in ms; divide by 1000 for readable seconds in the log.
+            this.progressService.logEvent('DASH_SKIP_BG_JUMP', (gap / 1000).toFixed(1) + 's');
+          } else {
+            this.progressService.updatePosition(pos);
+            this.locationService.markLiveTimestamp(ts);
+            // Log first live count after a recovery so we can confirm normal
+            // tracking resumed (only when gap was non-zero, i.e. not the very
+            // first position of the session).
+            if (gap > 0) {
+              this.progressService.logEvent('DASH_LIVE_RESUME', (gap / 1000).toFixed(1) + 's');
+            }
+          }
         } else {
           // Log accuracy drop visible to dashboard effect (live positions only).
-          this.progressService.logEvent('DASH_SKIP_ACC', pos.coords.accuracy.toFixed(0));
+          this.progressService.logEvent('DASH_SKIP_ACC', pos.coords.accuracy.toFixed(0) + 'm');
         }
       } else if (pos && !this.isMapInitialized()) {
         // Position arrived before map was ready — dropped silently otherwise.
