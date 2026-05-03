@@ -90,6 +90,7 @@ export class LocationService {
   startWatching(): void {
     if (this.watching) return;
     this.watching = true;
+    this.progressService.logEvent('TRACKING_START', Capacitor.isNativePlatform() ? 'native' : 'web');
     if (Capacitor.isNativePlatform()) {
       this.startNativeWatching();
     } else {
@@ -103,7 +104,6 @@ export class LocationService {
   // При открытии приложения буфер считывается и применяется к туману.
 
   private startNativeWatching(): void {
-    this.progressService.logEvent('TRACKING_START');
     this.status.set('initializing');
 
     // Load persisted live timestamp — used in flushLocationBuffer to skip
@@ -138,6 +138,10 @@ export class LocationService {
       this.flushLocationBuffer('resume');
     }).then(handle => {
       this.appResumeListener = handle;
+    }).catch((err: unknown) => {
+      console.error('❌ [App] Failed to register resume listener:', err);
+      // Critical: without this listener the buffer is never flushed on app resume.
+      this.progressService.logEvent('RESUME_LISTENER_FAIL', String(err));
     });
 
     console.log('🛰️ [BackgroundGeolocation] Adding watcher...');
