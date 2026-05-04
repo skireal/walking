@@ -232,6 +232,29 @@ export class ProgressService {
 
     const newPoint: [number, number] = [lat, lng];
 
+    // Tile discovery happens before any distance filtering — every position
+    // must open whatever tile it lands in, regardless of how close it is to
+    // the previous counted position. Skipping tile discovery on SKIP_DIST
+    // caused gaps: positions inside the threshold radius were discarded
+    // before reaching the tile check, leaving intermediate tiles unopened.
+    const currentTileId = this.getTileIdForLatLng(lat, lng);
+    if (!this.visitedTiles().has(currentTileId)) {
+      this.visitedTiles.update(tiles => {
+        const newTiles = new Set(tiles);
+        newTiles.add(currentTileId);
+        return newTiles;
+      });
+      this.dailyTileIds.update(tiles => {
+        const newTiles = new Set(tiles);
+        newTiles.add(currentTileId);
+        return newTiles;
+      });
+      this.lastSavedDistanceMeters = this.dailyDistanceMeters();
+      console.log(`🟩 [Progress] new tile: ${currentTileId} (total: ${this.visitedTiles().size}, today: ${this.dailyTileIds().size})`);
+      this.saveToLocalStorage();
+      this.saveProgress();
+    }
+
     if (trackDistance && this.lastPosition && typeof L !== 'undefined') {
       try {
         const lastLatLng = L.latLng([this.lastPosition.coords.latitude, this.lastPosition.coords.longitude]);
@@ -274,25 +297,6 @@ export class ProgressService {
 
     if (trackDistance) {
       this.lastPosition = pos;
-    }
-
-    // Discover new tile
-    const currentTileId = this.getTileIdForLatLng(lat, lng);
-    if (!this.visitedTiles().has(currentTileId)) {
-      this.visitedTiles.update(tiles => {
-        const newTiles = new Set(tiles);
-        newTiles.add(currentTileId);
-        return newTiles;
-      });
-      this.dailyTileIds.update(tiles => {
-        const newTiles = new Set(tiles);
-        newTiles.add(currentTileId);
-        return newTiles;
-      });
-      this.lastSavedDistanceMeters = this.dailyDistanceMeters();
-      console.log(`🟩 [Progress] new tile: ${currentTileId} (total: ${this.visitedTiles().size}, today: ${this.dailyTileIds().size})`);
-      this.saveToLocalStorage();
-      this.saveProgress();
     }
   }
 
