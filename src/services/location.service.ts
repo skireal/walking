@@ -307,8 +307,12 @@ export class LocationService {
     this.position.set(pos);
 
     if (accuracy <= this.accuracyThreshold) {
-      this._walkedPath.push([latitude, longitude]);
-      this.walkedPathLength.update(n => n + 1);
+      // Path point is NOT added here — applyLocation() fires for every
+      // BackgroundGeolocation callback including background ones, which would
+      // draw straight-line jumps on the map. Path points are added by:
+      //   • addLivePathPoint() — called from the dashboard effect only for
+      //     positions that are actually counted (non-background-recovery)
+      //   • flushLocationBuffer() — adds buffer positions in order
       if (this.status() !== 'tracking') {
         this.status.set('tracking');
         const now = Date.now();
@@ -421,6 +425,14 @@ export class LocationService {
 
   getWalkedPath(): [number, number][] {
     return this._walkedPath;
+  }
+
+  /** Called by DashboardComponent for each live position that is actually
+   *  counted (not a background-recovery jump). Keeps the visual path in sync
+   *  with what was actually counted, avoiding straight-line artifacts. */
+  addLivePathPoint(lat: number, lng: number): void {
+    this._walkedPath.push([lat, lng]);
+    this.walkedPathLength.update(n => n + 1);
   }
 
   // Called by DashboardComponent after updatePosition() is actually executed.

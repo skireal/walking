@@ -111,6 +111,7 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
           } else {
             this.progressService.updatePosition(pos);
             this.locationService.markLiveTimestamp(ts);
+            this.locationService.addLivePathPoint(lat, lng);
             this.lastCountedLatLng = [lat, lng];
             // Log exactly once after returning from background to confirm normal
             // tracking resumed. pendingLiveResume is set by DASH_SKIP_BG_JUMP /
