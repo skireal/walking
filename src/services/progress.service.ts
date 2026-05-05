@@ -12,7 +12,7 @@ interface LeafletStatic {
 
 declare var L: LeafletStatic | undefined;
 
-const STORAGE_KEY = 'walker_progress_data_v2';
+const STORAGE_KEY_PREFIX = 'walker_progress_data_v3_';
 const MIN_DISTANCE_THRESHOLD_METERS = 15; // Filters GPS drift while stationary
 const MAX_SPEED_MS = 5; // ~18 km/h — walking/running only
 const DAILY_DISTANCE_SAVE_INTERVAL_METERS = 50; // Save distance every 50m even without new tiles
@@ -352,9 +352,15 @@ export class ProgressService {
     }
   }
 
+  /** Per-user localStorage key — prevents data leaking between accounts. */
+  private storageKey(): string {
+    const uid = this.authService.currentUser()?.uid ?? 'anonymous';
+    return STORAGE_KEY_PREFIX + uid;
+  }
+
   private loadFromLocalStorage(): void {
     try {
-      const savedData = localStorage.getItem(STORAGE_KEY);
+      const savedData = localStorage.getItem(this.storageKey());
       if (savedData) {
         const data = JSON.parse(savedData) as ProgressData;
         this.visitedTiles.set(new Set(data.visitedTiles || []));
@@ -377,7 +383,7 @@ export class ProgressService {
           distanceMeters: Math.round(this.dailyDistanceMeters()),
         },
       };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      localStorage.setItem(this.storageKey(), JSON.stringify(data));
     } catch (e) {
       console.error('Error saving progress to localStorage', e);
     }
@@ -392,7 +398,7 @@ export class ProgressService {
     this.lastPosition = null;
     if (clearStorage) {
       try {
-        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(this.storageKey());
       } catch (e) {
         console.error('Error clearing progress from localStorage', e);
       }
