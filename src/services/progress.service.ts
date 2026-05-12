@@ -344,11 +344,19 @@ export class ProgressService {
       }
       console.log(`📅 [Progress] daily merged: ${this.dailyTileIds().size} tiles, ${this.dailyDistanceMeters()}m`);
     } else if (daily?.date && daily.date !== todayString()) {
-      // New day — reset daily stats
-      this.dailyTileIds.set(new Set());
-      this.dailyDistanceMeters.set(0);
-      this.lastSavedDistanceMeters = 0;
-      console.log(`📅 [Progress] new day detected, daily stats reset`);
+      // Firestore has a stale date (previous day or older).
+      // Only reset if we haven't already accumulated today's data locally —
+      // e.g. from a buffer flush after a force-kill where the 2s debounce
+      // never fired and Firestore was never updated.  If local data exists,
+      // keep it; the next saveProgress() call will push today's date to Firestore.
+      if (this.dailyDistanceMeters() === 0 && this.dailyTileIds().size === 0) {
+        this.dailyTileIds.set(new Set());
+        this.dailyDistanceMeters.set(0);
+        this.lastSavedDistanceMeters = 0;
+        console.log(`📅 [Progress] new day detected, daily stats reset`);
+      } else {
+        console.log(`📅 [Progress] new day in Firestore but local today data exists — keeping local (dist=${this.dailyDistanceMeters()}m, tiles=${this.dailyTileIds().size})`);
+      }
     }
   }
 
