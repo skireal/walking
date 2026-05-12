@@ -204,9 +204,13 @@ export class LocationService {
       let skippedAccuracy = 0;
       let skippedAlreadyLive = 0;
       let countedWithDistance = 0;
+      let skippedOldDay = 0;
       let pathPointsAdded = 0;
       const tilesBefore = this.progressService.visitedTiles().size;
       const distBefore = this.progressService.getDailyDistanceMeters();
+      // Positions from a previous calendar day must not count towards today's
+      // daily distance / daily tiles — only total tile discovery is credited.
+      const todayStr = new Date().toISOString().slice(0, 10);
       const liveThreshold = this.lastLiveTimestamp;
 
       // Log the live threshold at flush time. If the dashboard BG-jump fix is
@@ -240,8 +244,15 @@ export class LocationService {
           if (!trackDistance) skippedAlreadyLive++;
           else countedWithDistance++;
 
+          // Only attribute distance and daily tiles to today's calendar date.
+          // If the buffer contains positions from a previous day (e.g. app was
+          // never opened to flush the buffer until the next day), those positions
+          // still unlock total tiles but must not inflate today's daily stats.
+          const isFromToday = new Date(loc.time).toISOString().slice(0, 10) === todayStr;
+          if (!isFromToday) skippedOldDay++;
+
           const before = this.progressService.visitedTiles().size;
-          this.progressService.updatePosition(pos, trackDistance);
+          this.progressService.updatePosition(pos, trackDistance, isFromToday);
           if (this.progressService.visitedTiles().size > before) newTiles++;
         } else {
           // Log raw buffer position (failed accuracy).
@@ -265,7 +276,7 @@ export class LocationService {
       const distAdded = Math.round(distAfter - distBefore);
       const summary =
         `total=${parsed.length},accSkip=${skippedAccuracy},` +
-        `liveSkip=${skippedAlreadyLive},counted=${countedWithDistance},` +
+        `liveSkip=${skippedAlreadyLive},oldDay=${skippedOldDay},counted=${countedWithDistance},` +
         `distAdded=${distAdded}m,newTiles=${newTiles},tiles=${tilesBefore}->${tilesAfter}`;
       this.progressService.logEvent('BUF_FLUSH_DONE', summary);
       console.log(`✅ [LocationBuffer] flush complete — ${summary}`);

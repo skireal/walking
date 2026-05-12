@@ -215,7 +215,11 @@ export class ProgressService {
     });
   }
 
-  updatePosition(pos: GeolocationPosition, trackDistance: boolean = true): void {
+  // countDailyStats=false is used for buffer positions from a previous day:
+  // total tile discovery is still credited (you did walk there) but daily
+  // distance and daily tile counts are NOT updated so yesterday's walk does
+  // not appear in today's stats.
+  updatePosition(pos: GeolocationPosition, trackDistance: boolean = true, countDailyStats: boolean = true): void {
     const speed = pos.coords.speed;
 
     const lat = pos.coords.latitude;
@@ -244,12 +248,14 @@ export class ProgressService {
         newTiles.add(currentTileId);
         return newTiles;
       });
-      this.dailyTileIds.update(tiles => {
-        const newTiles = new Set(tiles);
-        newTiles.add(currentTileId);
-        return newTiles;
-      });
-      this.lastSavedDistanceMeters = this.dailyDistanceMeters();
+      if (countDailyStats) {
+        this.dailyTileIds.update(tiles => {
+          const newTiles = new Set(tiles);
+          newTiles.add(currentTileId);
+          return newTiles;
+        });
+        this.lastSavedDistanceMeters = this.dailyDistanceMeters();
+      }
       console.log(`🟩 [Progress] new tile: ${currentTileId} (total: ${this.visitedTiles().size}, today: ${this.dailyTileIds().size})`);
       this.saveToLocalStorage();
       this.saveProgress();
@@ -278,15 +284,21 @@ export class ProgressService {
           return;
         }
 
-        this.logPos('COUNT', lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters() + distanceChange);
-        this.dailyDistanceMeters.update(d => d + distanceChange);
+        if (countDailyStats) {
+          this.logPos('COUNT', lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters() + distanceChange);
+          this.dailyDistanceMeters.update(d => d + distanceChange);
 
-        // Save distance every 50m even if no new tiles were opened
-        const current = this.dailyDistanceMeters();
-        if (current - this.lastSavedDistanceMeters >= DAILY_DISTANCE_SAVE_INTERVAL_METERS) {
-          this.lastSavedDistanceMeters = current;
-          this.saveToLocalStorage();
-          this.saveProgress();
+          // Save distance every 50m even if no new tiles were opened
+          const current = this.dailyDistanceMeters();
+          if (current - this.lastSavedDistanceMeters >= DAILY_DISTANCE_SAVE_INTERVAL_METERS) {
+            this.lastSavedDistanceMeters = current;
+            this.saveToLocalStorage();
+            this.saveProgress();
+          }
+        } else {
+          // Position from a previous day — distance computed for speed checking
+          // and lastPosition advancement, but not added to today's daily total.
+          this.logPos('COUNT_OLD', lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters());
         }
       } catch (e) {
         console.error('🗺️ [Progress] distance calc error:', e);
