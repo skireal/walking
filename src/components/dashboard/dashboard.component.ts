@@ -25,7 +25,7 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
   private isMapInitialized = signal(false);
   private userMarker: any;
   private fogLayer: any;
-  private pathLine: any;
+  private pathLines: any[] = [];
   private renderedPathLength = 0;
   private shouldRecenterOnNextPosition = false;
   // Timestamp of the last position the Angular effect actually processed.
@@ -143,12 +143,32 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
 
     // Draws walked path from LocationService — covers both live GPS and buffered positions.
     // Uses an index so only new points are appended (no full redraw on every update).
+    // When consecutive path points are far apart (buffer→live boundary after a cold
+    // start, or a genuine GPS gap) a new L.polyline is started so Leaflet does not
+    // draw a straight line across the map.
     effect(() => {
       const len = this.locationService.walkedPathLength();
-      if (!this.isMapInitialized() || !this.pathLine) return;
+      if (!this.isMapInitialized() || this.pathLines.length === 0) return;
       const path = this.locationService.getWalkedPath();
       for (let i = this.renderedPathLength; i < path.length; i++) {
-        this.pathLine.addLatLng(path[i]);
+        if (i > 0) {
+          const [prevLat, prevLng] = path[i - 1];
+          const [curLat, curLng]   = path[i];
+          const dLat = curLat - prevLat;
+          const dLng = curLng - prevLng;
+          // Rough flat-earth distance (1° ≈ 111 km). Break the line if the jump
+          // exceeds 300 m — far more than normal GPS jitter, far less than a
+          // buffer-end → live-start gap of several kilometres.
+          const roughDistM = Math.sqrt(dLat * dLat + dLng * dLng) * 111_000;
+          if (roughDistM > 300) {
+            const newLine = L.polyline([], {
+              color: '#f97316', weight: 3, opacity: 0.85,
+              lineJoin: 'round', lineCap: 'round',
+            }).addTo(this.map);
+            this.pathLines.push(newLine);
+          }
+        }
+        this.pathLines[this.pathLines.length - 1].addLatLng(path[i]);
       }
       this.renderedPathLength = len;
     });
@@ -204,13 +224,15 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
     this.fogLayer.addTo(this.map);
 
     // Path line — shows walked route; gaps reveal where tracking broke off.
-    this.pathLine = L.polyline([], {
+    // pathLines is an array; extra segments are appended by the path effect
+    // whenever consecutive points jump more than 300 m (buffer → live boundary).
+    this.pathLines = [L.polyline([], {
       color: '#f97316',  // orange-500 — stands out against the teal fog
       weight: 3,
       opacity: 0.85,
       lineJoin: 'round',
       lineCap: 'round',
-    }).addTo(this.map);
+    }).addTo(this.map)];
 
     // GPS may already be watching (started from AppComponent during splash).
     // Only call startWatching() if it hasn't been started yet.
