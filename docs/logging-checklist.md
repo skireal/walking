@@ -67,3 +67,5 @@ For each `if/else` that decides whether to count distance, skip a position, or s
 | `DASH_SKIP_BG_ACC` | dashboard effect | BG recovery, low accuracy |
 | `DASH_SKIP_ACC` | dashboard effect | Low accuracy in foreground |
 | `DASH_LIVE_RESUME` | dashboard effect | First counted position after BG recovery |
+| `WARMUP_SPD` | `updatePosition` | GPS speed > MAX but warmup slots remain — position counted anyway |
+| `COUNT_OLD` | `updatePosition` | Buffer position from previous day — total tiles credited, daily stats skipped |

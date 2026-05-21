@@ -129,6 +129,12 @@ export class ProgressService {
   }
   // ─────────────────────────────────────────────────────────────────────────
 
+  // GPS warm-up: first few live positions after tracking starts can have
+  // spurious high speed readings while the chip stabilises. Skip the speed
+  // filter for this many positions, then enforce it normally.
+  private warmupPositionsLeft = 0;
+  startGpsWarmup(count = 5): void { this.warmupPositionsLeft = count; }
+
   private authService = inject(AuthService);
   private destroyRef = inject(DestroyRef);
   private db: Firestore | null = null;
@@ -226,13 +232,21 @@ export class ProgressService {
     const lng = pos.coords.longitude;
 
     if (speed !== null && speed > MAX_SPEED_MS) {
-      // Clearly vehicle speed — skip distance and tile discovery.
-      // Advance lastPosition so when the device slows back to walking speed,
-      // the effective-speed check below has a recent reference point.
-      this.logPos('SKIP_GPS_SPD', lat, lng, speed, this.lastPosition, null, null, null, this.dailyDistanceMeters());
-      if (trackDistance) this.lastPosition = pos;
-      return;
+      if (this.warmupPositionsLeft > 0) {
+        // GPS chip is still stabilising — spurious speed on cold start.
+        // Let the position through and log it so we can verify in session log.
+        this.logPos('WARMUP_SPD', lat, lng, speed, this.lastPosition, null, null, null, this.dailyDistanceMeters());
+      } else {
+        // Clearly vehicle speed — skip distance and tile discovery.
+        // Advance lastPosition so when the device slows back to walking speed,
+        // the effective-speed check below has a recent reference point.
+        this.logPos('SKIP_GPS_SPD', lat, lng, speed, this.lastPosition, null, null, null, this.dailyDistanceMeters());
+        if (trackDistance) this.lastPosition = pos;
+        return;
+      }
     }
+    // Consume one warmup slot for every position that passes the speed gate.
+    if (this.warmupPositionsLeft > 0) this.warmupPositionsLeft--;
 
     const newPoint: [number, number] = [lat, lng];
 

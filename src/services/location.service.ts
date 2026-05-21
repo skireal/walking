@@ -269,6 +269,10 @@ export class LocationService {
         this.walkedPathLength.update(n => n + pathPointsAdded);
       }
 
+      // Prime GPS warmup so the first live positions after this flush are not
+      // rejected by the speed filter due to chip stabilisation artefacts.
+      this.progressService.startGpsWarmup();
+
       // Обновляем сигнал позиции последней точкой — для маркера на карте
       const last = parsed[parsed.length - 1];
       this.applyLocation(last.latitude, last.longitude, last.accuracy, last.time, last.bearing ?? null, last.speed ?? null, last.altitude ?? null);
@@ -349,6 +353,9 @@ export class LocationService {
     }
 
     this.status.set('initializing');
+    // No buffer flush on web — start warmup immediately so first live
+    // positions with spurious GPS speed are not dropped.
+    this.progressService.startGpsWarmup();
 
     navigator.geolocation.getCurrentPosition(
       (pos) => {
