@@ -259,25 +259,55 @@ export class ProgressService {
 
     const lat = pos.coords.latitude;
     const lng = pos.coords.longitude;
+    const newPoint: [number, number] = [lat, lng];
 
-    if (speed !== null && speed > MAX_SPEED_MS) {
-      if (this.warmupPositionsLeft > 0) {
-        // GPS chip is still stabilising — spurious speed on cold start.
-        // Let the position through and log it so we can verify in session log.
-        this.logPos('WARMUP_SPD', lat, lng, speed, this.lastPosition, null, null, null, this.dailyDistanceMeters());
-      } else {
-        // Clearly vehicle speed — skip distance and tile discovery.
+    // Displacement from the last tracked point — computed UP FRONT so the speed
+    // gate below can distinguish a real vehicle (vehicle-scale displacement)
+    // from a spurious GPS speed spike while walking (walking-scale displacement).
+    // Stays null when there is no reference point yet or Leaflet is unavailable.
+    let distanceChange: number | null = null;
+    let timeDeltaSec: number | null = null;
+    let effectiveSpeed: number | null = null;
+    if (trackDistance && this.lastPosition && typeof L !== 'undefined') {
+      try {
+        const lastLatLng = L.latLng([this.lastPosition.coords.latitude, this.lastPosition.coords.longitude]);
+        distanceChange = lastLatLng.distanceTo(L.latLng(newPoint));
+        timeDeltaSec = (pos.timestamp - this.lastPosition.timestamp) / 1000;
+        effectiveSpeed = timeDeltaSec > 0 ? distanceChange / timeDeltaSec : null;
+      } catch (e) {
+        console.error('🗺️ [Progress] displacement calc error:', e);
+      }
+    }
+
+    // Vehicle speed gate. A high instantaneous GPS speed only rejects the
+    // position — including tile discovery — when the actual displacement
+    // confirms vehicle-scale movement. A lone spurious speed spike while
+    // walking (GPS glitch under buildings/trees) has walking-scale
+    // displacement, so the tile still opens instead of being silently dropped.
+    // When there is no displacement reference yet (effectiveSpeed === null),
+    // fall back to trusting the raw GPS speed as before.
+    const gpsFast = speed !== null && speed > MAX_SPEED_MS;
+    if (gpsFast && this.warmupPositionsLeft === 0) {
+      const effConfirmsVehicle = effectiveSpeed === null || effectiveSpeed > MAX_SPEED_MS;
+      if (effConfirmsVehicle) {
+        // Clearly vehicle movement — skip distance and tile discovery.
         // Advance lastPosition so when the device slows back to walking speed,
         // the effective-speed check below has a recent reference point.
-        this.logPos('SKIP_GPS_SPD', lat, lng, speed, this.lastPosition, null, null, null, this.dailyDistanceMeters());
+        this.logPos('SKIP_GPS_SPD', lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters());
         if (trackDistance) this.lastPosition = pos;
         return;
       }
+      // GPS reported vehicle speed but displacement says we barely moved —
+      // spurious spike. Let it through so the tile opens; distance accrual
+      // below still applies MIN_DISTANCE and effective-speed filters.
+      this.logPos('SPURIOUS_SPD', lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters());
+    } else if (gpsFast) {
+      // GPS chip is still stabilising — spurious speed on cold start.
+      // Let the position through and log it so we can verify in session log.
+      this.logPos('WARMUP_SPD', lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters());
     }
     // Consume one warmup slot for every position that passes the speed gate.
     if (this.warmupPositionsLeft > 0) this.warmupPositionsLeft--;
-
-    const newPoint: [number, number] = [lat, lng];
 
     // Tile discovery happens before any distance filtering — every position
     // must open whatever tile it lands in, regardless of how close it is to
@@ -304,47 +334,38 @@ export class ProgressService {
       this.saveProgress();
     }
 
-    if (trackDistance && this.lastPosition && typeof L !== 'undefined') {
-      try {
-        const lastLatLng = L.latLng([this.lastPosition.coords.latitude, this.lastPosition.coords.longitude]);
-        const newLatLng = L.latLng(newPoint);
-        const distanceChange = lastLatLng.distanceTo(newLatLng);
+    // Distance accrual — reuses the displacement computed above.
+    if (trackDistance && distanceChange !== null) {
+      if (distanceChange < MIN_DISTANCE_THRESHOLD_METERS) {
+        this.logPos('SKIP_DIST', lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters());
+        return;
+      }
 
-        if (distanceChange < MIN_DISTANCE_THRESHOLD_METERS) {
-          this.logPos('SKIP_DIST', lat, lng, speed, this.lastPosition, distanceChange, null, null, this.dailyDistanceMeters());
-          return;
+      // Effective speed check: catches vehicle movement where GPS speed is null
+      // or lags (e.g. metro decelerating into a station, speed briefly < MAX_SPEED_MS
+      // but the actual displacement from the last tracked point is vehicle-scale).
+      if (effectiveSpeed !== null && effectiveSpeed > MAX_SPEED_MS) {
+        this.logPos('SKIP_EFF_SPD', lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters());
+        console.log(`🚇 [Progress] effective speed ${effectiveSpeed.toFixed(1)} m/s — skipping`);
+        this.lastPosition = pos;
+        return;
+      }
+
+      if (countDailyStats) {
+        this.logPos('COUNT', lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters() + distanceChange);
+        this.dailyDistanceMeters.update(d => d + distanceChange);
+
+        // Save distance every 50m even if no new tiles were opened
+        const current = this.dailyDistanceMeters();
+        if (current - this.lastSavedDistanceMeters >= DAILY_DISTANCE_SAVE_INTERVAL_METERS) {
+          this.lastSavedDistanceMeters = current;
+          this.saveToLocalStorage();
+          this.saveProgress();
         }
-
-        // Effective speed check: catches vehicle movement where GPS speed is null
-        // or lags (e.g. metro decelerating into a station, speed briefly < MAX_SPEED_MS
-        // but the actual displacement from the last tracked point is vehicle-scale).
-        const timeDeltaSec = (pos.timestamp - this.lastPosition.timestamp) / 1000;
-        const effectiveSpeed = timeDeltaSec > 0 ? distanceChange / timeDeltaSec : null;
-        if (effectiveSpeed !== null && effectiveSpeed > MAX_SPEED_MS) {
-          this.logPos('SKIP_EFF_SPD', lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters());
-          console.log(`🚇 [Progress] effective speed ${effectiveSpeed.toFixed(1)} m/s — skipping`);
-          this.lastPosition = pos;
-          return;
-        }
-
-        if (countDailyStats) {
-          this.logPos('COUNT', lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters() + distanceChange);
-          this.dailyDistanceMeters.update(d => d + distanceChange);
-
-          // Save distance every 50m even if no new tiles were opened
-          const current = this.dailyDistanceMeters();
-          if (current - this.lastSavedDistanceMeters >= DAILY_DISTANCE_SAVE_INTERVAL_METERS) {
-            this.lastSavedDistanceMeters = current;
-            this.saveToLocalStorage();
-            this.saveProgress();
-          }
-        } else {
-          // Position from a previous day — distance computed for speed checking
-          // and lastPosition advancement, but not added to today's daily total.
-          this.logPos('COUNT_OLD', lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters());
-        }
-      } catch (e) {
-        console.error('🗺️ [Progress] distance calc error:', e);
+      } else {
+        // Position from a previous day — distance computed for speed checking
+        // and lastPosition advancement, but not added to today's daily total.
+        this.logPos('COUNT_OLD', lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters());
       }
     } else if (trackDistance && !this.lastPosition) {
       console.log(`🗺️ [Progress] first position received, L available: ${typeof L !== 'undefined'}`);

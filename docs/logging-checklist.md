@@ -68,4 +68,6 @@ For each `if/else` that decides whether to count distance, skip a position, or s
 | `DASH_SKIP_ACC` | dashboard effect | Low accuracy in foreground |
 | `DASH_LIVE_RESUME` | dashboard effect | First counted position after BG recovery |
 | `WARMUP_SPD` | `updatePosition` | GPS speed > MAX but warmup slots remain — position counted anyway |
+| `SPURIOUS_SPD` | `updatePosition` | GPS speed > MAX but displacement is walking-scale — spike ignored, tile still opens |
 | `COUNT_OLD` | `updatePosition` | Buffer position from previous day — total tiles credited, daily stats skipped |
+| `DAY_ROLLOVER` | `updatePosition` | Local calendar day changed while alive — daily counters reset |
