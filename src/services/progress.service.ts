@@ -30,7 +30,14 @@ interface ProgressData {
 }
 
 function todayString(): string {
-  return new Date().toISOString().slice(0, 10); // "2026-04-22"
+  // Local calendar date, NOT UTC. toISOString() would roll the day over at
+  // 00:00 UTC — e.g. in BST that is 01:00 local, so a 00:30 walk would be
+  // attributed to the previous day.
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`; // "2026-04-22"
 }
 
 @Injectable({
@@ -46,6 +53,11 @@ export class ProgressService {
   private dailyTileIds = signal<Set<string>>(new Set());
   private dailyDistanceMeters = signal(0);
   private lastSavedDistanceMeters = 0; // tracks when to trigger a save for distance-only updates
+  // Local calendar date the daily counters above belong to. Checked on every
+  // incoming position (rolloverIfNeeded) so the counters reset when the app is
+  // alive across midnight — otherwise yesterday's distance/tiles linger in
+  // memory and get re-saved under today's date, corrupting the cloud record.
+  private dailyDate = todayString();
 
   dailyTilesCount = computed(() => this.dailyTileIds().size);
 
@@ -221,11 +233,28 @@ export class ProgressService {
     });
   }
 
+  /** Reset daily counters when the local calendar day changes while the app is
+   *  running. Safe to call on every position — a no-op unless the date rolled
+   *  over. Resetting lastPosition prevents distance being accrued across the
+   *  midnight gap (a pre-midnight point → first post-midnight point jump). */
+  private rolloverIfNeeded(): void {
+    const today = todayString();
+    if (this.dailyDate === today) return;
+    console.log(`📅 [Progress] day rollover ${this.dailyDate} → ${today} — resetting daily stats`);
+    this.logEvent('DAY_ROLLOVER', `${this.dailyDate}->${today}`);
+    this.dailyDate = today;
+    this.dailyTileIds.set(new Set());
+    this.dailyDistanceMeters.set(0);
+    this.lastSavedDistanceMeters = 0;
+    this.lastPosition = null;
+  }
+
   // countDailyStats=false is used for buffer positions from a previous day:
   // total tile discovery is still credited (you did walk there) but daily
   // distance and daily tile counts are NOT updated so yesterday's walk does
   // not appear in today's stats.
   updatePosition(pos: GeolocationPosition, trackDistance: boolean = true, countDailyStats: boolean = true): void {
+    this.rolloverIfNeeded();
     const speed = pos.coords.speed;
 
     const lat = pos.coords.latitude;
@@ -353,6 +382,10 @@ export class ProgressService {
   }
 
   private applyDailyProgress(daily: DailyProgress | undefined): void {
+    // Reset in-memory counters first if the day changed while the app was alive.
+    // Guarantees any local data past this point genuinely belongs to today, so
+    // the "keep local" branch below is safe.
+    this.rolloverIfNeeded();
     if (daily?.date === todayString()) {
       // Merge tile IDs — local and cloud may each have tiles the other doesn't
       // (e.g. buffer-discovered tiles get overwritten by an older Firestore snapshot)
@@ -412,7 +445,7 @@ export class ProgressService {
         visitedTiles: Array.from(this.visitedTiles()),
         unlockedAchievements: Array.from(this.unlockedAchievements()),
         dailyProgress: {
-          date: todayString(),
+          date: this.dailyDate,
           tileIds: Array.from(this.dailyTileIds()),
           distanceMeters: Math.round(this.dailyDistanceMeters()),
         },
@@ -430,6 +463,7 @@ export class ProgressService {
     this.dailyDistanceMeters.set(0);
     this.lastSavedDistanceMeters = 0;
     this.lastPosition = null;
+    this.dailyDate = todayString();
     if (clearStorage) {
       try {
         localStorage.removeItem(this.storageKey());
@@ -472,7 +506,7 @@ export class ProgressService {
         visitedTiles: tilesToSave,
         unlockedAchievements: Array.from(this.unlockedAchievements()),
         dailyProgress: {
-          date: todayString(),
+          date: this.dailyDate,
           tileIds: Array.from(this.dailyTileIds()),
           distanceMeters: Math.round(this.dailyDistanceMeters()),
         },
