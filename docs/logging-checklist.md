@@ -45,6 +45,8 @@ For each `if/else` that decides whether to count distance, skip a position, or s
 
 | Tag | Where | Meaning |
 |-----|-------|---------|
+| `SESSION_BOOT` | `ProgressService` ctor | App process started — marks cold-start boundaries; carries platform + tz |
+| `STATIONARY` | `updatePosition` | Collapsed run of SKIP_DIST while standing still (`x<count>,<sec>s`) |
 | `TRACKING_START native\|web` | `startWatching` | Tracking session begins |
 | `TRACKING_STOP` | `stopWatching` | Tracking session ends |
 | `LIVE_TS_LOAD` | `startNativeWatching` | Persisted lastLiveTimestamp loaded |

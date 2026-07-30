@@ -1,4 +1,5 @@
 import { Injectable, signal, computed, inject, effect, untracked, DestroyRef } from '@angular/core';
+import { Capacitor } from '@capacitor/core';
 import { AuthService } from './auth.service';
 import { getFirestore, doc, setDoc, onSnapshot, Firestore, Unsubscribe } from 'firebase/firestore';
 
@@ -74,10 +75,59 @@ export class ProgressService {
 
   // ── Debug position log ────────────────────────────────────────────────────
   // Captures every incoming position with the reason it was counted or skipped.
-  // Written to localStorage so it survives a walk without DevTools attached.
+  // Persisted to localStorage AND reloaded on startup so it survives a full
+  // app restart (e.g. a force-kill mid-walk) — the previous session's log is
+  // appended to, never overwritten. Ring buffer trims oldest entries at the cap.
   // Header: ts_ms|lat|lng|gps_spd_ms|lp_lat|lp_lng|dist_m|dt_sec|eff_spd_ms|action|total_m
   private _posLog: string[] = [];
   private readonly POS_LOG_KEY = 'walker_pos_log';
+  private readonly MAX_POS_LOG_ENTRIES = 20000;
+
+  // Stationary SKIP_DIST collapsing: while the user stands still, positions
+  // arrive every few seconds and each would emit an identical SKIP_DIST line.
+  // Instead we count them and emit a single STATIONARY summary when movement
+  // resumes (or every 60s so a long stop still persists and bounds staleness).
+  private _skipDistCount = 0;
+  private _skipDistFirstTs = 0;
+  private _skipDistLastTs = 0;
+  private _skipDistLat = 0;
+  private _skipDistLng = 0;
+
+  /** Load the persisted log on startup so appends continue instead of the first
+   *  flush overwriting the previous walk. Called once from the constructor. */
+  private _loadPosLog(): void {
+    try {
+      const saved = localStorage.getItem(this.POS_LOG_KEY);
+      if (saved) {
+        this._posLog = saved.split('\n').filter(l => l.length > 0);
+        if (this._posLog.length > this.MAX_POS_LOG_ENTRIES) {
+          this._posLog = this._posLog.slice(-this.MAX_POS_LOG_ENTRIES);
+        }
+      }
+    } catch (e) {
+      console.error('Error loading pos log from localStorage', e);
+    }
+  }
+
+  /** Push a line and trim to the cap. Does NOT flush — callers decide when. */
+  private _append(line: string): void {
+    this._posLog.push(line);
+    if (this._posLog.length > this.MAX_POS_LOG_ENTRIES) this._posLog.shift();
+  }
+
+  /** Emit the pending STATIONARY summary (if any) and reset the counters.
+   *  Must be called before any non-SKIP_DIST entry so ordering is preserved. */
+  private _flushStationary(): void {
+    if (this._skipDistCount === 0) return;
+    const durS = ((this._skipDistLastTs - this._skipDistFirstTs) / 1000).toFixed(0);
+    this._append(
+      `${this._skipDistLastTs}|${this._skipDistLat.toFixed(5)}|${this._skipDistLng.toFixed(5)}|null|null|null|null|null|null|STATIONARY|x${this._skipDistCount},${durS}s`
+    );
+    this._skipDistCount = 0;
+    this._skipDistFirstTs = 0;
+    this._skipDistLastTs = 0;
+    this._flushPosLog();
+  }
 
   private logPos(
     action: string,
@@ -89,13 +139,25 @@ export class ProgressService {
     effSpd: number | null,
     totalM: number,
   ): void {
+    // Collapse runs of SKIP_DIST (standing still) into one STATIONARY summary.
+    if (action === 'SKIP_DIST') {
+      const now = Date.now();
+      if (this._skipDistCount === 0) this._skipDistFirstTs = now;
+      this._skipDistCount++;
+      this._skipDistLastTs = now;
+      this._skipDistLat = lat;
+      this._skipDistLng = lng;
+      // Persist a rolling summary during long stops so it isn't lost on a kill.
+      if (now - this._skipDistFirstTs >= 60_000) this._flushStationary();
+      return;
+    }
+    this._flushStationary();
     const f = (v: number | null, d = 2) => v === null ? 'null' : v.toFixed(d);
     const lpLat = lastPos ? lastPos.coords.latitude.toFixed(5) : 'null';
     const lpLng = lastPos ? lastPos.coords.longitude.toFixed(5) : 'null';
-    this._posLog.push(
+    this._append(
       `${Date.now()}|${lat.toFixed(5)}|${lng.toFixed(5)}|${f(gpsSpd)}|${lpLat}|${lpLng}|${f(distM)}|${f(dtSec)}|${f(effSpd)}|${action}|${totalM.toFixed(0)}`
     );
-    if (this._posLog.length > 10000) this._posLog.shift();
     if (this._posLog.length % 5 === 0) this._flushPosLog();
   }
 
@@ -106,8 +168,8 @@ export class ProgressService {
   // Generic event log entry (TRACKING_START, APP_RESUME, DASH_SKIP_*, etc.).
   // extra = any short string appended to last column.
   logEvent(tag: string, extra = ''): void {
-    this._posLog.push(`${Date.now()}|null|null|null|null|null|null|null|null|${tag}|${extra}`);
-    if (this._posLog.length > 10000) this._posLog.shift();
+    this._flushStationary();
+    this._append(`${Date.now()}|null|null|null|null|null|null|null|null|${tag}|${extra}`);
     this._flushPosLog();
   }
 
@@ -121,22 +183,40 @@ export class ProgressService {
     accuracy: number,
     posTimestamp: number,
   ): void {
+    this._flushStationary();
     const f = (v: number | null, d = 2) => v === null ? 'null' : v.toFixed(d);
-    this._posLog.push(
+    this._append(
       `${posTimestamp}|${lat.toFixed(5)}|${lng.toFixed(5)}|${f(speed)}|null|null|null|null|null|${action}|${accuracy.toFixed(0)}`
     );
-    if (this._posLog.length > 10000) this._posLog.shift();
     if (this._posLog.length % 5 === 0) this._flushPosLog();
   }
 
+  /** True when there is anything to copy/clear — drives the profile buttons. */
+  hasPosLog(): boolean {
+    return this._posLog.length > 0 || this._skipDistCount > 0;
+  }
+
   getPosLog(): string {
+    this._flushStationary();
     this._flushPosLog();
+    const platform = Capacitor.isNativePlatform() ? 'native' : 'web';
+    const tzHours = -new Date().getTimezoneOffset() / 60;
+    const tz = `${tzHours >= 0 ? '+' : ''}${tzHours}`;
+    const meta =
+      `# exported=${new Date().toISOString()} platform=${platform} tz=${tz} ` +
+      `tiles=${this.visitedTiles().size} dailyTiles=${this.dailyTileIds().size} ` +
+      `dailyDist=${Math.round(this.dailyDistanceMeters())}m entries=${this._posLog.length}`;
     // last column: total_m for COUNT/SKIP_* rows; accuracy_m for RAW_* rows
-    return 'ts_ms|lat|lng|gps_spd_ms|lp_lat|lp_lng|dist_m|dt_sec|eff_spd_ms|action|total_m_or_accuracy_m\n' + this._posLog.join('\n');
+    return meta + '\n' +
+      'ts_ms|lat|lng|gps_spd_ms|lp_lat|lp_lng|dist_m|dt_sec|eff_spd_ms|action|total_m_or_accuracy_m\n' +
+      this._posLog.join('\n');
   }
 
   clearPosLog(): void {
     this._posLog = [];
+    this._skipDistCount = 0;
+    this._skipDistFirstTs = 0;
+    this._skipDistLastTs = 0;
     try { localStorage.removeItem(this.POS_LOG_KEY); } catch {}
   }
   // ─────────────────────────────────────────────────────────────────────────
@@ -156,6 +236,12 @@ export class ProgressService {
   private lastPosition: GeolocationPosition | null = null;
 
   constructor() {
+    // Reload the persisted pos-log first so this session appends to the previous
+    // walk instead of overwriting it, then mark the app boot so cold-start
+    // boundaries (force-kill → reopen within one walk) are visible in the log.
+    this._loadPosLog();
+    this.logEvent('SESSION_BOOT', `${Capacitor.isNativePlatform() ? 'native' : 'web'},tz=${-new Date().getTimezoneOffset() / 60}`);
+
     this.destroyRef.onDestroy(() => {
       if (this.saveTimeout) {
         clearTimeout(this.saveTimeout);

@@ -42,9 +42,16 @@ export class ProfileComponent {
   achievements = this.achievementService.achievements;
 
   logCopied = signal(false);
+  logCleared = signal(false);
+  // Whether the log has anything to copy/clear — drives the button active state.
+  // Read once on entry; updated locally after clear (copy does not empty it).
+  hasLog = signal(this.progressService.hasPosLog());
 
-  startLog(): void {
+  clearLog(): void {
     this.progressService.clearPosLog();
+    this.hasLog.set(false);
+    this.logCleared.set(true);
+    setTimeout(() => this.logCleared.set(false), 2000);
   }
 
   async copyLog(): Promise<void> {
