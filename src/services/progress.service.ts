@@ -129,8 +129,14 @@ export class ProgressService {
     this._flushPosLog();
   }
 
+  // posTs = the position's own GPS-fix timestamp (pos.timestamp), NOT Date.now().
+  // Buffered positions are all processed in one tight flush loop, so using the
+  // processing time would collapse an hour of walking into the same instant and
+  // make STATIONARY durations always read 0s. The fix time keeps the log
+  // chronologically meaningful for both live and buffered positions.
   private logPos(
     action: string,
+    posTs: number,
     lat: number, lng: number,
     gpsSpd: number | null,
     lastPos: GeolocationPosition | null,
@@ -141,14 +147,13 @@ export class ProgressService {
   ): void {
     // Collapse runs of SKIP_DIST (standing still) into one STATIONARY summary.
     if (action === 'SKIP_DIST') {
-      const now = Date.now();
-      if (this._skipDistCount === 0) this._skipDistFirstTs = now;
+      if (this._skipDistCount === 0) this._skipDistFirstTs = posTs;
       this._skipDistCount++;
-      this._skipDistLastTs = now;
+      this._skipDistLastTs = posTs;
       this._skipDistLat = lat;
       this._skipDistLng = lng;
       // Persist a rolling summary during long stops so it isn't lost on a kill.
-      if (now - this._skipDistFirstTs >= 60_000) this._flushStationary();
+      if (posTs - this._skipDistFirstTs >= 60_000) this._flushStationary();
       return;
     }
     this._flushStationary();
@@ -156,7 +161,7 @@ export class ProgressService {
     const lpLat = lastPos ? lastPos.coords.latitude.toFixed(5) : 'null';
     const lpLng = lastPos ? lastPos.coords.longitude.toFixed(5) : 'null';
     this._append(
-      `${Date.now()}|${lat.toFixed(5)}|${lng.toFixed(5)}|${f(gpsSpd)}|${lpLat}|${lpLng}|${f(distM)}|${f(dtSec)}|${f(effSpd)}|${action}|${totalM.toFixed(0)}`
+      `${posTs}|${lat.toFixed(5)}|${lng.toFixed(5)}|${f(gpsSpd)}|${lpLat}|${lpLng}|${f(distM)}|${f(dtSec)}|${f(effSpd)}|${action}|${totalM.toFixed(0)}`
     );
     if (this._posLog.length % 5 === 0) this._flushPosLog();
   }
@@ -379,18 +384,18 @@ export class ProgressService {
         // Clearly vehicle movement — skip distance and tile discovery.
         // Advance lastPosition so when the device slows back to walking speed,
         // the effective-speed check below has a recent reference point.
-        this.logPos('SKIP_GPS_SPD', lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters());
+        this.logPos('SKIP_GPS_SPD', pos.timestamp, lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters());
         if (trackDistance) this.lastPosition = pos;
         return;
       }
       // GPS reported vehicle speed but displacement says we barely moved —
       // spurious spike. Let it through so the tile opens; distance accrual
       // below still applies MIN_DISTANCE and effective-speed filters.
-      this.logPos('SPURIOUS_SPD', lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters());
+      this.logPos('SPURIOUS_SPD', pos.timestamp, lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters());
     } else if (gpsFast) {
       // GPS chip is still stabilising — spurious speed on cold start.
       // Let the position through and log it so we can verify in session log.
-      this.logPos('WARMUP_SPD', lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters());
+      this.logPos('WARMUP_SPD', pos.timestamp, lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters());
     }
     // Consume one warmup slot for every position that passes the speed gate.
     if (this.warmupPositionsLeft > 0) this.warmupPositionsLeft--;
@@ -423,7 +428,7 @@ export class ProgressService {
     // Distance accrual — reuses the displacement computed above.
     if (trackDistance && distanceChange !== null) {
       if (distanceChange < MIN_DISTANCE_THRESHOLD_METERS) {
-        this.logPos('SKIP_DIST', lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters());
+        this.logPos('SKIP_DIST', pos.timestamp, lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters());
         return;
       }
 
@@ -431,14 +436,14 @@ export class ProgressService {
       // or lags (e.g. metro decelerating into a station, speed briefly < MAX_SPEED_MS
       // but the actual displacement from the last tracked point is vehicle-scale).
       if (effectiveSpeed !== null && effectiveSpeed > MAX_SPEED_MS) {
-        this.logPos('SKIP_EFF_SPD', lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters());
+        this.logPos('SKIP_EFF_SPD', pos.timestamp, lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters());
         console.log(`🚇 [Progress] effective speed ${effectiveSpeed.toFixed(1)} m/s — skipping`);
         this.lastPosition = pos;
         return;
       }
 
       if (countDailyStats) {
-        this.logPos('COUNT', lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters() + distanceChange);
+        this.logPos('COUNT', pos.timestamp, lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters() + distanceChange);
         this.dailyDistanceMeters.update(d => d + distanceChange);
 
         // Save distance every 50m even if no new tiles were opened
@@ -451,7 +456,7 @@ export class ProgressService {
       } else {
         // Position from a previous day — distance computed for speed checking
         // and lastPosition advancement, but not added to today's daily total.
-        this.logPos('COUNT_OLD', lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters());
+        this.logPos('COUNT_OLD', pos.timestamp, lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters());
       }
     } else if (trackDistance && !this.lastPosition) {
       console.log(`🗺️ [Progress] first position received, L available: ${typeof L !== 'undefined'}`);
