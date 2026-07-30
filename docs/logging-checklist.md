@@ -71,5 +71,6 @@ For each `if/else` that decides whether to count distance, skip a position, or s
 | `DASH_LIVE_RESUME` | dashboard effect | First counted position after BG recovery |
 | `WARMUP_SPD` | `updatePosition` | GPS speed > MAX but warmup slots remain — position counted anyway |
 | `SPURIOUS_SPD` | `updatePosition` | GPS speed > MAX but displacement is walking-scale — spike ignored, tile still opens |
+| `SKIP_VEHICLE` | `updatePosition` | Vehicle-mode hysteresis active (slow/decelerating vehicle) — tile AND distance skipped |
 | `COUNT_OLD` | `updatePosition` | Buffer position from previous day — total tiles credited, daily stats skipped |
 | `DAY_ROLLOVER` | `updatePosition` | Local calendar day changed while alive — daily counters reset |
