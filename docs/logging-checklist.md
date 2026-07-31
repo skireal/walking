@@ -74,3 +74,4 @@ For each `if/else` that decides whether to count distance, skip a position, or s
 | `SKIP_VEHICLE` | `updatePosition` | Vehicle-mode hysteresis active (slow/decelerating vehicle) — tile AND distance skipped |
 | `COUNT_OLD` | `updatePosition` | Buffer position from previous day — total tiles credited, daily stats skipped |
 | `DAY_ROLLOVER` | `updatePosition` | Local calendar day changed while alive — daily counters reset |
+| `SAVE_DEFERRED_UNSEEDED` | `saveToFirestore` | Firestore write deferred (first snapshot not received yet) to avoid wiping cloud tiles |

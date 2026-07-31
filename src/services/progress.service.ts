@@ -250,6 +250,13 @@ export class ProgressService {
   private isSyncing = signal(false);
   private saveTimeout: ReturnType<typeof setTimeout> | null = null;
   private lastPosition: GeolocationPosition | null = null;
+  // Becomes true once the FIRST Firestore snapshot for the current user has been
+  // received (even an empty one for a new user). Until then we must not write to
+  // Firestore: setDoc with merge:true replaces the visitedTiles array wholesale,
+  // so writing our local-only set before the cloud history has merged would wipe
+  // it. Writes attempted while unseeded are deferred to localStorage and flushed
+  // once the snapshot arrives and the sets have been unioned.
+  private cloudSeeded = false;
 
   constructor() {
     // Reload the persisted pos-log first so this session appends to the previous
@@ -294,6 +301,10 @@ export class ProgressService {
         // then Firestore snapshot will merge on top.
         // Wrapped in untracked() so signal reads inside resetProgress/loadFromLocalStorage
         // don't create tracking dependencies that would re-trigger this effect.
+        // New subscription for this user — the cloud history has not merged yet,
+        // so block Firestore writes until the first snapshot arrives.
+        this.cloudSeeded = false;
+
         untracked(() => {
           this.resetProgress(false);
           this.loadFromLocalStorage();
@@ -320,6 +331,18 @@ export class ProgressService {
                 // Restore daily progress if it's still today
                 this.applyDailyProgress(data.dailyProgress);
               });
+            }
+
+            // First snapshot for this user (exists or not) — cloud history has now
+            // merged into memory, so writes are safe. Reconcile once: if the local
+            // set has tiles the cloud lacked (offline walk, or writes deferred
+            // before seeding), push the unioned set back.
+            if (!this.cloudSeeded) {
+              this.cloudSeeded = true;
+              if (untracked(() => this.visitedTiles().size) > 0) {
+                console.log(`🌱 [Progress] cloud seeded — reconciling local ∪ cloud back to Firestore`);
+                this.saveProgress();
+              }
             }
           },
           (error) => {
@@ -639,6 +662,16 @@ export class ProgressService {
     const user = this.authService.currentUser();
     if (!user || !this.db) {
       console.warn(`💾 [Progress] saveToFirestore skipped — user: ${!!user}, db: ${!!this.db}`);
+      return;
+    }
+
+    // Do not write before the first snapshot has merged the cloud history — a
+    // write now would replace visitedTiles with our local-only set and wipe the
+    // cloud. Persist locally instead; the seed-reconcile flush pushes it later.
+    if (!this.cloudSeeded) {
+      console.warn('💾 [Progress] save deferred — cloud not seeded yet, persisting to localStorage');
+      this.logEvent('SAVE_DEFERRED_UNSEEDED', String(this.visitedTiles().size));
+      this.saveToLocalStorage();
       return;
     }
 
