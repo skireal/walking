@@ -212,6 +212,13 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
     this.map = L.map('map', {
       zoomControl: false,
       minZoom: 3,
+      // Disable Leaflet's tile fade-in. On every fog redraw (tile opened) and on
+      // zoom, GridLayer recreates its canvas tiles starting at opacity 0 and
+      // ramps them up — which made the whole dark fog flash lighter for a moment.
+      // With fade off, tiles appear at full opacity immediately (no flash). The
+      // only trade-off is the raster basemap no longer fades in, which is
+      // imperceptible for fast tiles.
+      fadeAnimation: false,
     }).setView(initialCenter, initialZoom);
 
     L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
