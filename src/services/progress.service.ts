@@ -232,16 +232,6 @@ export class ProgressService {
   private warmupPositionsLeft = 0;
   startGpsWarmup(count = 5): void { this.warmupPositionsLeft = count; }
 
-  // Vehicle-mode hysteresis. A single fast fix must not enter vehicle mode
-  // (spurious GPS spike / one-off position jump), and a single slow fix must not
-  // exit it (bus braking at a stop, traffic light). vehicleScore rises on any
-  // fast signal and falls on slow ones; mode latches on at ENTER and off at 0.
-  // Note: a steadily crawling bus (~10-15 km/h) is indistinguishable from brisk
-  // walking by speed alone — that needs Activity Recognition, out of scope here.
-  private vehicleScore = 0;
-  private inVehicleMode = false;
-  private readonly VEHICLE_ENTER_SCORE = 3;
-  private readonly VEHICLE_SCORE_CAP = 3;
 
   private authService = inject(AuthService);
   private destroyRef = inject(DestroyRef);
@@ -404,53 +394,38 @@ export class ProgressService {
       }
     }
 
-    // ── Vehicle classification (runs BEFORE tile discovery) ──────────────────
-    // Two "fast" signals: instantaneous GPS speed and effective speed (actual
-    // displacement / time). Either alone can be a one-off artefact — a spurious
-    // GPS speed spike, or a single position jump that inflates effective speed —
-    // so vehicle mode is driven by hysteresis, not a single fix. This is what
-    // catches a SLOW or decelerating vehicle whose instantaneous speed dips
-    // below the threshold (or is null) yet keeps covering vehicle-scale ground:
-    // the tile is now skipped, not just the distance.
+    // Vehicle speed gate. A high instantaneous GPS speed only rejects the
+    // position — including tile discovery — when the actual displacement
+    // confirms vehicle-scale movement. A lone spurious speed spike while
+    // walking (GPS glitch under buildings/trees) has walking-scale
+    // displacement, so the tile still opens instead of being silently dropped.
+    // Decision is per-fix and stateless: no vehicle-mode latch, because a
+    // latch driven by GPS speed spikes (which arrive in bursts) wrongly stuck
+    // in vehicle mode on foot / while stationary and even across sessions.
+    // When there is no displacement reference yet (effectiveSpeed === null),
+    // fall back to trusting the raw GPS speed as before.
     const gpsFast = speed !== null && speed > MAX_SPEED_MS;
-    const effFast = effectiveSpeed !== null && effectiveSpeed > MAX_SPEED_MS;
-
-    if (this.warmupPositionsLeft > 0) {
-      // Chip still stabilising after a cold start / buffer flush — speed readings
-      // are unreliable, so don't classify or score. Let the position through.
-      if (gpsFast || effFast) {
-        this.logPos('WARMUP_SPD', pos.timestamp, lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters());
-      }
-      this.warmupPositionsLeft--;
-    } else {
-      const eitherFast = gpsFast || effFast;
-      this.vehicleScore = eitherFast
-        ? Math.min(this.vehicleScore + 1, this.VEHICLE_SCORE_CAP)
-        : Math.max(this.vehicleScore - 1, 0);
-      // Both signals agreeing is a strong vehicle cue — enter immediately so a
-      // real ride is caught on its first fix, not after ENTER fixes.
-      const strongVehicle = gpsFast && effFast;
-      if (strongVehicle || this.vehicleScore >= this.VEHICLE_ENTER_SCORE) {
-        this.inVehicleMode = true;
-      } else if (this.vehicleScore === 0) {
-        this.inVehicleMode = false;
-      }
-
-      if (this.inVehicleMode) {
-        // Skip tile discovery AND distance. Advance lastPosition so the
-        // effective-speed reference stays fresh for when we slow to walking.
-        const tag = strongVehicle ? 'SKIP_GPS_SPD' : 'SKIP_VEHICLE';
-        this.logPos(tag, pos.timestamp, lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters());
+    if (gpsFast && this.warmupPositionsLeft === 0) {
+      const effConfirmsVehicle = effectiveSpeed === null || effectiveSpeed > MAX_SPEED_MS;
+      if (effConfirmsVehicle) {
+        // Clearly vehicle movement — skip distance and tile discovery.
+        // Advance lastPosition so when the device slows back to walking speed,
+        // the effective-speed check below has a recent reference point.
+        this.logPos('SKIP_GPS_SPD', pos.timestamp, lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters());
         if (trackDistance) this.lastPosition = pos;
         return;
       }
-
-      // Not vehicle, but a lone GPS speed spike while walking — note it for
-      // diagnostics; the tile still opens (distance is still guarded below).
-      if (gpsFast && !effFast) {
-        this.logPos('SPURIOUS_SPD', pos.timestamp, lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters());
-      }
+      // GPS reported vehicle speed but displacement says we barely moved —
+      // spurious spike. Let it through so the tile opens; distance accrual
+      // below still applies MIN_DISTANCE and effective-speed filters.
+      this.logPos('SPURIOUS_SPD', pos.timestamp, lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters());
+    } else if (gpsFast) {
+      // GPS chip is still stabilising — spurious speed on cold start.
+      // Let the position through and log it so we can verify in session log.
+      this.logPos('WARMUP_SPD', pos.timestamp, lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters());
     }
+    // Consume one warmup slot for every position that passes the speed gate.
+    if (this.warmupPositionsLeft > 0) this.warmupPositionsLeft--;
 
     // Tile discovery happens before any distance filtering — every position
     // must open whatever tile it lands in, regardless of how close it is to
@@ -484,10 +459,10 @@ export class ProgressService {
         return;
       }
 
-      // Distance-only guard for a single position jump that inflates effective
-      // speed for one fix (sustained vehicle movement is already handled by the
-      // vehicle-mode classifier above). The tile at this landing point already
-      // opened; here we just refuse to count the bogus displacement.
+      // Effective speed check: catches vehicle movement where GPS speed is null
+      // or lags (e.g. metro decelerating into a station, speed briefly < MAX_SPEED_MS
+      // but the actual displacement from the last tracked point is vehicle-scale).
+      // Distance-only: the tile at this landing point already opened above.
       if (effectiveSpeed !== null && effectiveSpeed > MAX_SPEED_MS) {
         this.logPos('SKIP_EFF_SPD', pos.timestamp, lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters());
         console.log(`🚇 [Progress] effective speed ${effectiveSpeed.toFixed(1)} m/s — skipping`);
@@ -628,8 +603,6 @@ export class ProgressService {
     this.dailyDistanceMeters.set(0);
     this.lastSavedDistanceMeters = 0;
     this.lastPosition = null;
-    this.vehicleScore = 0;
-    this.inVehicleMode = false;
     this.dailyDate = todayString();
     if (clearStorage) {
       try {
