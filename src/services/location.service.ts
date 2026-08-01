@@ -39,6 +39,17 @@ export class LocationService {
   private lastLiveTsAdvLog = 0;
   private readonly LIVE_TS_ADV_LOG_INTERVAL_MS = 60_000;
 
+  // Background-recovery detection — moved here from DashboardComponent so that
+  // ingestion no longer depends on the dashboard being alive or the map being
+  // ready. A live update whose timestamp jumps far ahead of the previous one
+  // means the app was backgrounded; that single position would draw a
+  // straight-line jump, so it is skipped and flushLocationBuffer() replays the
+  // real step-by-step path instead.
+  private lastIngestTimestamp = 0;
+  private readonly BG_JUMP_THRESHOLD_MS = 15_000;
+  private lastCountedLatLng: [number, number] | null = null;
+  private pendingLiveResume = false;
+
   constructor() {
     // Следим за точностью позиции
     effect(() => {
@@ -273,9 +284,10 @@ export class LocationService {
       // rejected by the speed filter due to chip stabilisation artefacts.
       this.progressService.startGpsWarmup();
 
-      // Обновляем сигнал позиции последней точкой — для маркера на карте
+      // Обновляем сигнал позиции последней точкой — только маркер, без ingest:
+      // все буферные точки уже обработаны через updatePosition() в цикле выше.
       const last = parsed[parsed.length - 1];
-      this.applyLocation(last.latitude, last.longitude, last.accuracy, last.time, last.bearing ?? null, last.speed ?? null, last.altitude ?? null);
+      this.showPosition(this.buildPosition(last.latitude, last.longitude, last.accuracy, last.time, last.bearing ?? null, last.speed ?? null, last.altitude ?? null));
 
       const distAdded = Math.round(distAfter - distBefore);
       const summary =
@@ -301,7 +313,10 @@ export class LocationService {
     } as GeolocationPosition;
   }
 
-  // Общий метод — применяет одну координату к сигналу позиции
+  // Live position handler (native watcher + web watchPosition): update the map
+  // marker signal AND ingest the position for progress. Ingestion runs here in
+  // the root service, independent of the dashboard/map lifecycle, so leaving the
+  // Home tab (or a position arriving before the map is ready) no longer drops it.
   private applyLocation(
     latitude: number,
     longitude: number,
@@ -312,22 +327,25 @@ export class LocationService {
     altitude: number | null,
   ): void {
     const pos = this.buildPosition(latitude, longitude, accuracy, time, heading, speed, altitude);
+    this.showPosition(pos);
+    this.ingest(pos);
+  }
+
+  // Display-only: update the position signal (map marker) and status. Does NOT
+  // ingest — used for live positions (via applyLocation) and for the flush-end
+  // marker update (which must not re-ingest an already-processed buffer point).
+  private showPosition(pos: GeolocationPosition): void {
+    const accuracy = pos.coords.accuracy;
 
     // Only log raw live callbacks that FAILED accuracy — passed positions are
     // already visible as COUNT/SKIP_* entries from updatePosition().
     if (accuracy > this.accuracyThreshold) {
-      this.progressService.logRawPos('RAW_LIVE_FAIL', latitude, longitude, speed, accuracy, time);
+      this.progressService.logRawPos('RAW_LIVE_FAIL', pos.coords.latitude, pos.coords.longitude, pos.coords.speed, accuracy, pos.timestamp);
     }
 
     this.position.set(pos);
 
     if (accuracy <= this.accuracyThreshold) {
-      // Path point is NOT added here — applyLocation() fires for every
-      // BackgroundGeolocation callback including background ones, which would
-      // draw straight-line jumps on the map. Path points are added by:
-      //   • addLivePathPoint() — called from the dashboard effect only for
-      //     positions that are actually counted (non-background-recovery)
-      //   • flushLocationBuffer() — adds buffer positions in order
       if (this.status() !== 'tracking') {
         this.status.set('tracking');
         const now = Date.now();
@@ -340,6 +358,47 @@ export class LocationService {
       if (this.status() !== 'low-accuracy') {
         this.status.set('low-accuracy');
       }
+    }
+  }
+
+  // Progress ingestion for a single LIVE position. Formerly the DashboardComponent
+  // position effect; moved here so it runs for every live callback regardless of
+  // whether the dashboard exists. Background-recovery jumps are skipped so the
+  // buffer flush can replay the real path (see BG_JUMP_THRESHOLD_MS above).
+  private ingest(pos: GeolocationPosition): void {
+    const ts = pos.timestamp;
+    const gap = this.lastIngestTimestamp > 0 ? ts - this.lastIngestTimestamp : 0;
+    const isBackgroundRecovery = gap > this.BG_JUMP_THRESHOLD_MS;
+    this.lastIngestTimestamp = ts;
+
+    const lat = pos.coords.latitude;
+    const lng = pos.coords.longitude;
+    const acc = pos.coords.accuracy;
+
+    if (acc <= this.accuracyThreshold) {
+      if (isBackgroundRecovery) {
+        const from = this.lastCountedLatLng
+          ? `${this.lastCountedLatLng[0].toFixed(5)},${this.lastCountedLatLng[1].toFixed(5)}`
+          : 'unknown';
+        this.progressService.logEvent(
+          'DASH_SKIP_BG_JUMP',
+          `${(gap / 1000).toFixed(1)}s,from=${from},to=${lat.toFixed(5)},${lng.toFixed(5)},acc=${acc.toFixed(0)}m`,
+        );
+        this.pendingLiveResume = true;
+      } else {
+        this.progressService.updatePosition(pos);
+        this.markLiveTimestamp(ts);
+        this.addLivePathPoint(lat, lng);
+        this.lastCountedLatLng = [lat, lng];
+        if (this.pendingLiveResume) {
+          this.pendingLiveResume = false;
+          this.progressService.logEvent('DASH_LIVE_RESUME', (gap / 1000).toFixed(1) + 's');
+        }
+      }
+    } else {
+      const tag = isBackgroundRecovery ? 'DASH_SKIP_BG_ACC' : 'DASH_SKIP_ACC';
+      this.progressService.logEvent(tag, `${acc.toFixed(0)}m,gap=${(gap / 1000).toFixed(1)}s`);
+      if (isBackgroundRecovery) this.pendingLiveResume = true;
     }
   }
 
@@ -359,15 +418,8 @@ export class LocationService {
 
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        if (pos.coords.accuracy <= this.accuracyThreshold) {
-          this.position.set(pos);
-          this.status.set('tracking');
-          console.log(`✅ Good accuracy (${Math.round(pos.coords.accuracy)}m) on first try:`, pos.coords);
-        } else {
-          console.warn(`⚠️ Initial position has low accuracy (${Math.round(pos.coords.accuracy)}m), waiting for GPS...`);
-          this.position.set(pos);
-          this.status.set('low-accuracy');
-        }
+        // Initial fix — display only (no ingest; watchPosition handles progress).
+        this.showPosition(pos);
       },
       (err) => {
         console.error(`❌ getCurrentPosition error (${err.code}):`, err.message);
@@ -382,12 +434,10 @@ export class LocationService {
           `📍 Position update - Accuracy: ${Math.round(pos.coords.accuracy)}m, ` +
             `Lat: ${pos.coords.latitude.toFixed(6)}, Lng: ${pos.coords.longitude.toFixed(6)}`
         );
-        this.position.set(pos);
-        if (pos.coords.accuracy <= this.accuracyThreshold) {
-          if (this.status() !== 'tracking') this.status.set('tracking');
-        } else {
-          if (this.status() !== 'low-accuracy') this.status.set('low-accuracy');
-        }
+        // Same display + ingest path as native, so web tracking counts progress
+        // too (previously ingestion only happened in the dashboard effect).
+        this.showPosition(pos);
+        this.ingest(pos);
       },
       (err) => {
         console.error(`❌ Watch error (${err.code}):`, err.message);
@@ -445,17 +495,17 @@ export class LocationService {
     return this._walkedPath;
   }
 
-  /** Called by DashboardComponent for each live position that is actually
-   *  counted (not a background-recovery jump). Keeps the visual path in sync
-   *  with what was actually counted, avoiding straight-line artifacts. */
+  /** Called by ingest() for each live position that is actually counted (not a
+   *  background-recovery jump). Keeps the visual path in sync with what was
+   *  actually counted, avoiding straight-line artifacts. */
   addLivePathPoint(lat: number, lng: number): void {
     this._walkedPath.push([lat, lng]);
     this.walkedPathLength.update(n => n + 1);
   }
 
-  // Called by DashboardComponent after updatePosition() is actually executed.
-  // Only advances when Angular effects are running — ensures buffer positions
-  // from "effects-dead" background periods get trackDistance = true on flush.
+  // Called by ingest() after updatePosition() is actually executed for a live
+  // position. Advances only for foreground-counted positions — ensures buffer
+  // positions from background periods get trackDistance = true on flush.
   markLiveTimestamp(time: number): void {
     if (time > this.lastLiveTimestamp) {
       // Throttle log to once per minute — fires every few seconds during normal

@@ -64,11 +64,10 @@ For each `if/else` that decides whether to count distance, skip a position, or s
 | `BUF_ALL_SKIPPED_WARN` | `flushLocationBuffer` | liveThreshold ≥ last buffer ts → all skipped |
 | `BUF_FLUSH_DONE` | `flushLocationBuffer` | Flush summary with distAdded |
 | `BUF_FLUSH_ERROR` | `flushLocationBuffer` | Flush threw an exception |
-| `DASH_SKIP_MAP` | dashboard effect | Position arrived before map init |
-| `DASH_SKIP_BG_JUMP` | dashboard effect | BG recovery, good accuracy — jump skipped |
-| `DASH_SKIP_BG_ACC` | dashboard effect | BG recovery, low accuracy |
-| `DASH_SKIP_ACC` | dashboard effect | Low accuracy in foreground |
-| `DASH_LIVE_RESUME` | dashboard effect | First counted position after BG recovery |
+| `DASH_SKIP_BG_JUMP` | `LocationService.ingest` | BG recovery, good accuracy — jump skipped |
+| `DASH_SKIP_BG_ACC` | `LocationService.ingest` | BG recovery, low accuracy |
+| `DASH_SKIP_ACC` | `LocationService.ingest` | Low accuracy in foreground |
+| `DASH_LIVE_RESUME` | `LocationService.ingest` | First counted position after BG recovery |
 | `WARMUP_SPD` | `updatePosition` | GPS speed > MAX but warmup slots remain — position counted anyway |
 | `SPURIOUS_SPD` | `updatePosition` | GPS speed > MAX but displacement is walking-scale — spike ignored, tile still opens |
 | `COUNT_OLD` | `updatePosition` | Buffer position from previous day — total tiles credited, daily stats skipped |

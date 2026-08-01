@@ -28,21 +28,6 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
   private pathLines: any[] = [];
   private renderedPathLength = 0;
   private shouldRecenterOnNextPosition = false;
-  // Timestamp of the last position the Angular effect actually processed.
-  // Used to detect background-recovery jumps: if the gap between the last
-  // processed position and the current one exceeds this threshold, the app
-  // was likely backgrounded and the single live update would be a straight-line
-  // jump. In that case we skip counting and let flushLocationBuffer() use the
-  // accurate step-by-step buffer data instead.
-  private lastEffectTimestamp = 0;
-  private readonly BG_JUMP_THRESHOLD_MS = 15_000;
-  // Last good-accuracy position the effect counted — logged as departure point
-  // in DASH_SKIP_BG_JUMP so we can see the full A→B skip on the map.
-  private lastCountedLatLng: [number, number] | null = null;
-  // Set to true after a BG skip; cleared after logging the first successful
-  // DASH_LIVE_RESUME so the tag fires exactly once per recovery, not on
-  // every subsequent position.
-  private pendingLiveResume = false;
 
   locationStatus = this.locationService.status;
 
@@ -61,76 +46,24 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
   });
 
   constructor() {
+    // Render-only: move the map marker to the latest position and handle
+    // recenter. Progress ingestion (tile discovery, distance, background-jump
+    // detection) now lives in LocationService.ingest(), so it keeps running
+    // even when this component is destroyed (e.g. on the Profile tab).
     effect(() => {
       const pos = this.locationService.position();
-      if (pos && this.isMapInitialized()) {
-        const newPoint: [number, number] = [pos.coords.latitude, pos.coords.longitude];
+      if (!pos || !this.isMapInitialized()) return;
+      const newPoint: [number, number] = [pos.coords.latitude, pos.coords.longitude];
 
-        if (this.userMarker) {
-          this.userMarker.setLatLng(newPoint);
-          if (this.shouldRecenterOnNextPosition) {
-            this.shouldRecenterOnNextPosition = false;
-            this.map.setView(newPoint, 17);
-          }
-        } else {
+      if (this.userMarker) {
+        this.userMarker.setLatLng(newPoint);
+        if (this.shouldRecenterOnNextPosition) {
+          this.shouldRecenterOnNextPosition = false;
           this.map.setView(newPoint, 17);
-          this.userMarker = L.marker(newPoint).addTo(this.map);
         }
-
-        // Detect whether the app was backgrounded between this and the last
-        // effect-processed position. All positions (good or bad accuracy) advance
-        // the timestamp so a temporary GPS drop in the foreground doesn't
-        // incorrectly trigger background-recovery mode.
-        const ts = pos.timestamp;
-        const gap = this.lastEffectTimestamp > 0 ? ts - this.lastEffectTimestamp : 0;
-        const isBackgroundRecovery = gap > this.BG_JUMP_THRESHOLD_MS;
-        this.lastEffectTimestamp = ts;
-
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
-        const acc = pos.coords.accuracy;
-
-        if (this.locationService.hasGoodAccuracy()) {
-          if (isBackgroundRecovery) {
-            // The effect just returned from background — the live position signal
-            // skipped ahead to the latest BackgroundGeolocation callback, which
-            // would produce a single straight-line jump. Skip both updatePosition
-            // and markLiveTimestamp so flushLocationBuffer() can count the actual
-            // walked path step-by-step with trackDistance = true.
-            // Log gap, departure coords, landing coords, and accuracy so the skip
-            // can be verified on the map post-walk.
-            const from = this.lastCountedLatLng
-              ? `${this.lastCountedLatLng[0].toFixed(5)},${this.lastCountedLatLng[1].toFixed(5)}`
-              : 'unknown';
-            this.progressService.logEvent(
-              'DASH_SKIP_BG_JUMP',
-              `${(gap / 1000).toFixed(1)}s,from=${from},` +
-              `to=${lat.toFixed(5)},${lng.toFixed(5)},acc=${acc.toFixed(0)}m`,
-            );
-            this.pendingLiveResume = true;
-          } else {
-            this.progressService.updatePosition(pos);
-            this.locationService.markLiveTimestamp(ts);
-            this.locationService.addLivePathPoint(lat, lng);
-            this.lastCountedLatLng = [lat, lng];
-            // Log exactly once after returning from background to confirm normal
-            // tracking resumed. pendingLiveResume is set by DASH_SKIP_BG_JUMP /
-            // DASH_SKIP_BG_ACC so this fires once per recovery, not every step.
-            if (this.pendingLiveResume) {
-              this.pendingLiveResume = false;
-              this.progressService.logEvent('DASH_LIVE_RESUME', (gap / 1000).toFixed(1) + 's');
-            }
-          }
-        } else {
-          // Log accuracy drop. If this is also a background-recovery position,
-          // tag it so we know the BG period ended with low accuracy.
-          const tag = isBackgroundRecovery ? 'DASH_SKIP_BG_ACC' : 'DASH_SKIP_ACC';
-          this.progressService.logEvent(tag, `${acc.toFixed(0)}m,gap=${(gap / 1000).toFixed(1)}s`);
-          if (isBackgroundRecovery) this.pendingLiveResume = true;
-        }
-      } else if (pos && !this.isMapInitialized()) {
-        // Position arrived before map was ready — dropped silently otherwise.
-        this.progressService.logEvent('DASH_SKIP_MAP');
+      } else {
+        this.map.setView(newPoint, 17);
+        this.userMarker = L.marker(newPoint).addTo(this.map);
       }
     });
 
@@ -196,7 +129,10 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
-    this.locationService.stopWatching();
+    // NOTE: tracking is deliberately NOT stopped here. It is owned by
+    // AppComponent (started/stopped on auth state), so leaving the Home tab no
+    // longer kills GPS tracking and the native buffer mid-walk.
+    this.map?.remove();
     document.removeEventListener('visibilitychange', this.onVisibilityChange);
   }
 
@@ -241,11 +177,7 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
       lineCap: 'round',
     }).addTo(this.map)];
 
-    // GPS may already be watching (started from AppComponent during splash).
-    // Only call startWatching() if it hasn't been started yet.
-    if (!this.locationService.isWatching()) {
-      this.locationService.startWatching();
-    }
+    // Tracking is owned by AppComponent (started on login), not the dashboard.
     this.isMapInitialized.set(true);
   }
 
