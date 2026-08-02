@@ -16,7 +16,9 @@
       @if (currentUser(); as user) {
         <p class="text-gray-500 text-sm">{{ user.email }}</p>
       }
-      <p class="text-gray-400">{{ joinDate() }}</p>
+      @if (joinDate()) {
+        <p class="text-gray-400">{{ joinDate() }}</p>
+      }
     </div>
   </div>
 

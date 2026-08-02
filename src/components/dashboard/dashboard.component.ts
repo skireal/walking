@@ -1,8 +1,7 @@
-import { Component, ChangeDetectionStrategy, signal, computed, inject, AfterViewInit, OnDestroy, effect } from '@angular/core';
+import { Component, ChangeDetectionStrategy, signal, inject, AfterViewInit, OnDestroy, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { LocationService } from '../../services/location.service';
 import { ProgressService } from '../../services/progress.service';
-import { AuthService } from '../../services/auth.service';
 
 declare var L: any;
 
@@ -15,7 +14,6 @@ declare var L: any;
 export class DashboardComponent implements AfterViewInit, OnDestroy {
   private locationService = inject(LocationService);
   private progressService = inject(ProgressService);
-  private authService = inject(AuthService);
 
   discoveredTiles = this.progressService.discoveredTilesCount;
   dailyDistance = this.progressService.dailyDistance;
@@ -45,20 +43,6 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
   private pendingLiveResume = false;
 
   locationStatus = this.locationService.status;
-
-  userName = computed(() => {
-    const email = this.authService.currentUser()?.email;
-    if (!email) return '';
-    const namePart = email.split('@')[0];
-    return namePart.charAt(0).toUpperCase() + namePart.slice(1);
-  });
-
-  greeting = computed(() => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Good Morning';
-    if (hour < 18) return 'Good Afternoon';
-    return 'Good Evening';
-  });
 
   constructor() {
     effect(() => {

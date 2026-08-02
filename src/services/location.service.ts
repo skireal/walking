@@ -474,9 +474,4 @@ export class LocationService {
     const pos = this.position();
     return pos !== null && pos.coords.accuracy <= this.accuracyThreshold;
   }
-
-  getCurrentAccuracy(): number | null {
-    const pos = this.position();
-    return pos?.coords.accuracy ?? null;
-  }
 }

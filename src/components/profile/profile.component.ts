@@ -20,7 +20,16 @@ export class ProfileComponent {
   private router = inject<Router>(Router);
 
   currentUser = this.authService.currentUser;
-  joinDate = signal('Joined March 2023');
+
+  // Real account creation date from Firebase (metadata.creationTime is an
+  // RFC-1123 string). Falls back to empty so we never show a fabricated date.
+  joinDate = computed(() => {
+    const created = this.currentUser()?.metadata?.creationTime;
+    if (!created) return '';
+    const d = new Date(created);
+    if (isNaN(d.getTime())) return '';
+    return `Joined ${d.toLocaleString('en-US', { month: 'long', year: 'numeric' })}`;
+  });
 
   displayName = computed(() => {
     const user = this.currentUser();
