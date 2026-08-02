@@ -50,17 +50,5 @@ export class AppComponent {
         this.showOnboarding.set(true);
       }
     });
-
-    // Tracking lifecycle is owned here (tied to auth), not the dashboard, so it
-    // survives navigating away from the Home tab. Start on login (idempotent
-    // with the splash-flow start above), stop on logout so a logged-out user is
-    // not tracked and the foreground service / buffer are released.
-    effect(() => {
-      if (this.isLoggedIn()) {
-        this.locationService.startWatching();
-      } else if (this.locationService.isWatching()) {
-        this.locationService.stopWatching();
-      }
-    });
   }
 }
