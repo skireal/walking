@@ -198,6 +198,11 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
   ngOnDestroy(): void {
     this.locationService.stopWatching();
     document.removeEventListener('visibilitychange', this.onVisibilityChange);
+    // Tear down the Leaflet map so it releases the window-resize/DOM listeners
+    // and animation timers it registers globally. Angular gives a fresh #map div
+    // on each Home visit, so without remove() the old map object stays reachable
+    // via those global listeners and leaks — memory grows per Home↔Profile trip.
+    this.map?.remove();
   }
 
   private initMap(): void {
