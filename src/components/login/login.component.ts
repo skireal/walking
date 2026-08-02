@@ -1,4 +1,4 @@
-import { Component, ChangeDetectionStrategy, signal, inject } from '@angular/core';
+import { Component, ChangeDetectionStrategy, signal, inject, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -21,6 +21,19 @@ export class LoginComponent {
   showPassword = signal(false);
   error = signal<string | null>(null);
   isLoading = signal(false);
+
+  constructor() {
+    // Leave /login as soon as the user is authenticated. This is the "way back"
+    // for the case where the auth guard's 5s safety timeout fired before Firebase
+    // finished restoring the session (slow cold start / network): the guard sends
+    // the user here, then auth resolves and this bounces them to the dashboard.
+    // Also prevents an already-logged-in user from sitting on the login screen.
+    effect(() => {
+      if (this.authService.isLoggedIn()) {
+        this.router.navigate(['/dashboard']);
+      }
+    });
+  }
 
   async loginWithGoogle(): Promise<void> {
     this.isLoading.set(true);

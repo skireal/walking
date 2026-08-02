@@ -1,4 +1,4 @@
-import { Component, ChangeDetectionStrategy, signal, inject } from '@angular/core';
+import { Component, ChangeDetectionStrategy, signal, inject, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -21,6 +21,16 @@ export class RegisterComponent {
   confirmPassword = signal('');
   error = signal<string | null>(null);
   isLoading = signal(false);
+
+  constructor() {
+    // Same "way back" as LoginComponent: if the auth guard's timeout sent an
+    // already-authenticated user here, bounce to the dashboard once auth resolves.
+    effect(() => {
+      if (this.authService.isLoggedIn()) {
+        this.router.navigate(['/dashboard']);
+      }
+    });
+  }
 
   async register(): Promise<void> {
     if (this.password() !== this.confirmPassword()) {
