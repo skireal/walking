@@ -238,6 +238,12 @@ export class ProgressService {
   private db: Firestore | null = null;
   private progressUnsubscribe: Unsubscribe | null = null;
   private isSyncing = signal(false);
+  // Non-null while cloud sync is failing (permission denied, document too large,
+  // expired token, listener error). Surfaced in the profile so a permanently
+  // broken sync isn't invisible — previously these errors only hit the console.
+  private syncErrorSignal = signal<string | null>(null);
+  /** Non-null while cloud sync is failing; null when healthy. Read by the profile. */
+  readonly syncError = this.syncErrorSignal.asReadonly();
   private saveTimeout: ReturnType<typeof setTimeout> | null = null;
   private lastPosition: GeolocationPosition | null = null;
   // Becomes true once the FIRST Firestore snapshot for the current user has been
@@ -337,6 +343,8 @@ export class ProgressService {
           },
           (error) => {
             console.error('Error listening to progress document:', error);
+            this.syncErrorSignal.set('Cloud sync error — progress may not be up to date.');
+            this.logSyncFail('LISTEN_FAIL', error);
           }
         );
       } else {
@@ -664,13 +672,24 @@ export class ProgressService {
       const progressDocRef = doc(this.db, 'users', user.uid, 'progress', 'main');
       await setDoc(progressDocRef, data, { merge: true });
       console.log(`✅ [Progress] saved ${tileCount} tiles to Firestore`);
+      this.syncErrorSignal.set(null); // a successful write clears any prior error
       if (this.visitedTiles().size > tileCount) {
         console.log(`🔄 [Progress] new tiles added during save → re-saving`);
         this.saveProgress();
       }
     } catch (e) {
       console.error('❌ [Progress] Firestore save FAILED:', e);
+      this.syncErrorSignal.set('Progress not saved to the cloud — will retry.');
+      this.logSyncFail('SAVE_FAIL', e);
     }
+  }
+
+  /** Log a sync failure to the session log (checklist §1) with a compact reason. */
+  private logSyncFail(tag: string, err: unknown): void {
+    const code = err && typeof err === 'object' && 'code' in err
+      ? String((err as { code: unknown }).code)
+      : String(err);
+    this.logEvent(tag, code.slice(0, 80));
   }
 
   isSyncingNow(): boolean {

@@ -41,6 +41,10 @@ export class ProfileComponent {
 
   achievements = this.achievementService.achievements;
 
+  // Non-null while cloud sync is failing — shown as a banner so a broken sync
+  // isn't invisible. Progress is always safe locally regardless.
+  syncError = this.progressService.syncError;
+
   logCopied = signal(false);
   logCleared = signal(false);
   // Whether the log has anything to copy/clear — drives the button active state.
