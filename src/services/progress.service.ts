@@ -313,16 +313,22 @@ export class ProgressService {
             if (docSnap.exists()) {
               const data = docSnap.data() as ProgressData;
               untracked(() => {
+                // Return the SAME set reference when the snapshot adds nothing new,
+                // so the signal doesn't notify and the fog layer isn't redrawn. A
+                // Firestore snapshot echoes back on every one of our own saves
+                // (~every 2s while walking); without this each echo forced a full
+                // fog GridLayer redraw even though no tile had actually changed.
                 this.visitedTiles.update(existing => {
                   const merged = new Set(existing);
                   (data.visitedTiles || []).forEach((t: string) => merged.add(t));
+                  if (merged.size === existing.size) return existing;
                   console.log(`☁️ [Progress] Firestore snapshot: ${data.visitedTiles?.length ?? 0} cloud tiles merged → total ${merged.size}`);
                   return merged;
                 });
                 this.unlockedAchievements.update(existing => {
                   const merged = new Set(existing);
                   (data.unlockedAchievements || []).forEach((a: string) => merged.add(a));
-                  return merged;
+                  return merged.size === existing.size ? existing : merged;
                 });
                 // Restore daily progress if it's still today
                 this.applyDailyProgress(data.dailyProgress);
