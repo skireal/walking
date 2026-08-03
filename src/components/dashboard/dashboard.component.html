@@ -3,7 +3,10 @@
   <div id="map" class="h-full w-full z-0"></div>
 
   <!-- UI Overlay -->
-  <div class="absolute top-0 left-0 right-0 z-10 p-3 pointer-events-none">
+  <!-- padding-top adds the status-bar safe-area inset on top of p-3 so the pill
+       clears the system clock / notch on devices with a tall status bar -->
+  <div class="absolute top-0 left-0 right-0 z-10 p-3 pointer-events-none"
+       style="padding-top: calc(0.75rem + env(safe-area-inset-top))">
     <div class="max-w-md mx-auto bg-gray-900/70 backdrop-blur-sm px-4 py-2 rounded-full shadow-lg pointer-events-auto flex items-center justify-between">
       <div class="flex items-center gap-2">
         @switch (locationStatus()) {
