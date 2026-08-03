@@ -1,14 +1,14 @@
-const CACHE_NAME = 'walker-app-cache-v2'; // Incremented cache version
+const CACHE_NAME = 'walker-app-cache-v3'; // bump to purge the old shell cache
+// Tailwind and Leaflet are now bundled into the app build (see angular.json), so
+// their old CDN URLs were removed from the precache. Inter is still loaded from
+// rsms.me by index.html, so it stays.
 const urlsToCache = [
   './',
   './index.html',
   './manifest.json',
   './assets/icon-192.svg',
   './assets/icon-512.svg',
-  'https://cdn.tailwindcss.com',
-  'https://rsms.me/inter/inter.css',
-  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
-  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
+  'https://rsms.me/inter/inter.css'
 ];
 
 self.addEventListener('install', event => {
