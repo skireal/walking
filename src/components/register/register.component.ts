@@ -33,6 +33,17 @@ export class RegisterComponent {
   }
 
   async register(): Promise<void> {
+    // Client-side checks before hitting Firebase (Angular's FormsModule disables
+    // native HTML validation, so the template's required/minlength don't run).
+    const email = this.email().trim();
+    if (!email) {
+      this.error.set('Please enter your email address.');
+      return;
+    }
+    if (this.password().length < 6) {
+      this.error.set('Password must be at least 6 characters.');
+      return;
+    }
     if (this.password() !== this.confirmPassword()) {
       this.error.set('Passwords do not match.');
       return;
@@ -42,7 +53,8 @@ export class RegisterComponent {
     this.error.set(null);
 
     try {
-      await this.authService.register(this.email(), this.password());
+      // Trimmed email — see LoginComponent.login for why.
+      await this.authService.register(email, this.password());
       this.router.navigate(['/dashboard']);
     } catch (e: any) {
       this.error.set(parseFirebaseError(e));

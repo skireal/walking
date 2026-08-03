@@ -49,7 +49,8 @@ export class LoginComponent {
   }
 
   async login(): Promise<void> {
-    if (!this.email().trim() || !this.password()) {
+    const email = this.email().trim();
+    if (!email || !this.password()) {
       this.error.set('Please enter both email and password.');
       return;
     }
@@ -57,7 +58,9 @@ export class LoginComponent {
     this.isLoading.set(true);
     this.error.set(null);
     try {
-      await this.authService.login(this.email(), this.password());
+      // Send the trimmed email — a leading/trailing space (common from autofill)
+      // would otherwise trip Firebase's auth/invalid-email.
+      await this.authService.login(email, this.password());
       this.router.navigate(['/dashboard']);
     } catch (e: unknown) {
       this.error.set(parseFirebaseError(e));
