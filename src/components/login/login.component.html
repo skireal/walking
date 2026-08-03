@@ -1,7 +1,7 @@
 <div class="flex items-center justify-center min-h-screen bg-gray-900 px-4">
   <div class="w-full max-w-md space-y-8">
     <div class="flex flex-col items-center gap-3">
-      <svg class="w-16 h-16" viewBox="0 0 192 192" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <svg class="w-16 h-16" viewBox="0 0 192 192" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
         <path d="M 44,59 68,83 44,107 20,83 Z" fill="#2dd4bf" />
         <path d="M 96,59 120,83 96,107 72,83 Z" fill="#2dd4bf" />
         <path d="M 148,59 172,83 148,107 124,83 Z" fill="#2dd4bf" />
@@ -40,9 +40,12 @@
             class="appearance-none rounded-none relative block w-full px-3 py-3 pr-10 border border-gray-700 bg-gray-800 text-white placeholder-gray-500 rounded-b-md focus:outline-none focus:ring-teal-500 focus:border-teal-500 focus:z-10 sm:text-sm"
             placeholder="Password"
           />
-          <button type="button" (click)="showPassword.set(!showPassword())" class="absolute inset-y-0 right-0 px-3 flex items-center text-gray-400 z-10">
+          <button type="button" (click)="showPassword.set(!showPassword())"
+            [attr.aria-label]="showPassword() ? 'Hide password' : 'Show password'"
+            [attr.aria-pressed]="showPassword()"
+            class="absolute inset-y-0 right-0 px-3 flex items-center text-gray-400 z-10">
             @if (showPassword()) {
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
                 <path
                   stroke-linecap="round"
                   stroke-linejoin="round"
@@ -50,7 +53,7 @@
                 />
               </svg>
             } @else {
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
                 <path
                   stroke-linecap="round"
                   stroke-linejoin="round"
@@ -96,7 +99,7 @@
       [disabled]="isLoading()"
       class="w-full flex items-center justify-center gap-3 py-3 px-4 border border-gray-600 rounded-md bg-gray-800 text-white text-sm font-medium hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 focus:ring-offset-gray-900 disabled:opacity-50 disabled:cursor-wait transition-colors"
     >
-      <svg class="h-5 w-5" viewBox="0 0 24 24">
+      <svg class="h-5 w-5" viewBox="0 0 24 24" aria-hidden="true">
         <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
         <path
           fill="#34A853"
