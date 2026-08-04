@@ -27,8 +27,16 @@ dist-ssr
 .angular
 src/env.ts
 PROJECT_OVERVIEW.md
-android/
+
+# The android/ project IS tracked (custom LocationBuffer plugin, manifest,
+# foreground-service config). Build artifacts and copied web assets are excluded
+# by android/.gitignore. Secrets below are NEVER committed.
 
 # Android release signing — NEVER commit these
 android/app/walker-release.jks
 android/app/keystore.properties
+android/app/*.jks
+android/app/*.keystore
+
+# Native Firebase config — kept out of git like src/env.ts (same config values)
+android/app/google-services.json
