@@ -24,8 +24,22 @@ export class LocationService {
   private accuracyThreshold = 50;
   private lastGpsAcquiredLog = 0;
   private appResumeListener: PluginListenerHandle | null = null;
+  private appPauseListener: PluginListenerHandle | null = null;
   private destroyRef = inject(DestroyRef);
   private progressService = inject(ProgressService);
+
+  // ── Foreground/background tracking (Model B foundation, observational only) ──
+  // Whether the app is currently in the foreground. Flipped by App pause/resume.
+  // In this commit it is only recorded and logged — no counting path reads it yet.
+  // Commit 2 will gate live ingestion on this so background positions are counted
+  // exclusively from the native buffer (removing the fragile BG-jump heuristic).
+  private isForeground = true;
+  // Boundary timestamp captured the moment the app goes to background: the ts of
+  // the last live-counted position. Everything the buffer holds AFTER this boundary
+  // happened while backgrounded and should be counted on flush. Persisted so a
+  // cold start (app killed while backgrounded) can still resolve the boundary.
+  private fgBoundaryTs = 0;
+  private readonly FG_BOUNDARY_KEY = 'walker_fg_boundary';
 
   // Timestamp of the last position handled by live BackgroundGeolocation.
   // Persisted to localStorage so flushLocationBuffer() can skip positions
@@ -115,6 +129,13 @@ export class LocationService {
     // cleanly and buffer positions from this session may be skipped.
     this.progressService.logEvent('LIVE_TS_LOAD', this.lastLiveTimestamp.toString());
 
+    // Load persisted foreground boundary (Model B foundation). Observational for
+    // now: logged so a real walk shows whether pause/resume boundaries line up
+    // with lastLiveTimestamp before Commit 2 starts gating ingestion on them.
+    this.fgBoundaryTs = parseInt(localStorage.getItem(this.FG_BOUNDARY_KEY) || '0', 10);
+    this.isForeground = true;
+    this.progressService.logEvent('FG_BOUNDARY_LOAD', this.fgBoundaryTs.toString());
+
     // Запускаем буферизацию координат на нативной стороне
     console.log('🚀 [LocationService] Starting native location buffer...');
     LocationBuffer.startBuffering()
@@ -135,6 +156,10 @@ export class LocationService {
     }
     App.addListener('resume', () => {
       console.log('📱 [App] resumed — flushing location buffer...');
+      // Foreground restored. Record the transition for Model B verification;
+      // counting still runs exactly as before (flush + live effect unchanged).
+      this.isForeground = true;
+      this.progressService.logEvent('APP_FG', `boundary=${this.fgBoundaryTs},live=${this.lastLiveTimestamp}`);
       this.flushLocationBuffer('resume');
     }).then(handle => {
       this.appResumeListener = handle;
@@ -142,6 +167,27 @@ export class LocationService {
       console.error('❌ [App] Failed to register resume listener:', err);
       // Critical: without this listener the buffer is never flushed on app resume.
       this.progressService.logEvent('RESUME_LISTENER_FAIL', String(err));
+    });
+
+    // Подписываемся на pause — фиксируем момент ухода в фон (Model B foundation).
+    // Пока только наблюдение: запоминаем границу = ts последней live-точки, чтобы
+    // на реальной прогулке проверить, что она совпадает с lastLiveTimestamp.
+    // Счётчик дистанции/тайлов это НЕ читает — поведение не меняется.
+    if (this.appPauseListener) {
+      this.appPauseListener.remove();
+      this.appPauseListener = null;
+    }
+    App.addListener('pause', () => {
+      console.log('📱 [App] paused — recording foreground boundary...');
+      this.isForeground = false;
+      this.fgBoundaryTs = this.lastLiveTimestamp;
+      localStorage.setItem(this.FG_BOUNDARY_KEY, this.fgBoundaryTs.toString());
+      this.progressService.logEvent('APP_PAUSE', `boundary=${this.fgBoundaryTs}`);
+    }).then(handle => {
+      this.appPauseListener = handle;
+    }).catch((err: unknown) => {
+      console.error('❌ [App] Failed to register pause listener:', err);
+      this.progressService.logEvent('PAUSE_LISTENER_FAIL', String(err));
     });
 
     console.log('🛰️ [BackgroundGeolocation] Adding watcher...');
@@ -410,6 +456,10 @@ export class LocationService {
       if (this.appResumeListener) {
         this.appResumeListener.remove();
         this.appResumeListener = null;
+      }
+      if (this.appPauseListener) {
+        this.appPauseListener.remove();
+        this.appPauseListener = null;
       }
       LocationBuffer.stopBuffering().catch(() => {});
     } else {

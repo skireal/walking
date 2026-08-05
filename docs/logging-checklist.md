@@ -54,6 +54,10 @@ For each `if/else` that decides whether to count distance, skip a position, or s
 | `BUF_START_FAIL` | `startNativeWatching` | LocationBuffer.startBuffering() failed |
 | `BG_WATCHER_FAIL` | `startNativeWatching` | BackgroundGeolocation.addWatcher() failed |
 | `RESUME_LISTENER_FAIL` | `startNativeWatching` | App.addListener('resume') failed |
+| `PAUSE_LISTENER_FAIL` | `startNativeWatching` | App.addListener('pause') failed |
+| `FG_BOUNDARY_LOAD` | `startNativeWatching` | Persisted foreground boundary loaded (Model B foundation) |
+| `APP_PAUSE` | pause listener | App backgrounded — foreground boundary recorded (= last live ts) |
+| `APP_FG` | resume listener | App foregrounded — boundary/live logged before flush |
 | `GPS_DENIED` | BG callback | Location permission revoked |
 | `GPS_ERROR` | BG callback | Other GPS error |
 | `VISIBILITY_HIDDEN` | `onVisibilityChange` | App went to background |
