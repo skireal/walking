@@ -129,11 +129,13 @@ export class LocationService {
     // cleanly and buffer positions from this session may be skipped.
     this.progressService.logEvent('LIVE_TS_LOAD', this.lastLiveTimestamp.toString());
 
-    // Load persisted foreground boundary (Model B foundation). Observational for
-    // now: logged so a real walk shows whether pause/resume boundaries line up
-    // with lastLiveTimestamp before Commit 2 starts gating ingestion on them.
+    // Load persisted foreground boundary. Live ingestion (applyLocation) is gated
+    // on isForeground: only foreground positions are counted live; background
+    // positions come exclusively from the buffer flush. Start gated OFF and open
+    // it only after the cold-start flush below, so a watcher callback can't
+    // advance the dedup timestamp mid-flush and make the flush skip the walk.
     this.fgBoundaryTs = parseInt(localStorage.getItem(this.FG_BOUNDARY_KEY) || '0', 10);
-    this.isForeground = true;
+    this.isForeground = false;
     this.progressService.logEvent('FG_BOUNDARY_LOAD', this.fgBoundaryTs.toString());
 
     // Запускаем буферизацию координат на нативной стороне
@@ -146,21 +148,33 @@ export class LocationService {
         this.progressService.logEvent('BUF_START_FAIL', String(err));
       });
 
-    // Сбрасываем буфер сразу — на случай если приложение открылось после прогулки (холодный старт)
-    this.flushLocationBuffer('cold');
+    // Сбрасываем буфер сразу — на случай если приложение открылось после прогулки (холодный старт).
+    // Открываем live-ingest только после флаша; сбрасываем distance-anchor, чтобы
+    // первая live-точка не посчитала прыжок от устаревшей точки до флаша (фантом).
+    this.flushLocationBuffer('cold').finally(() => {
+      this.progressService.resetDistanceAnchor();
+      this.isForeground = true;
+    });
 
     // Подписываемся на resume — но только один раз. Удаляем старый слушатель перед регистрацией нового.
     if (this.appResumeListener) {
       this.appResumeListener.remove();
       this.appResumeListener = null;
     }
-    App.addListener('resume', () => {
+    App.addListener('resume', async () => {
       console.log('📱 [App] resumed — flushing location buffer...');
-      // Foreground restored. Record the transition for Model B verification;
-      // counting still runs exactly as before (flush + live effect unchanged).
-      this.isForeground = true;
       this.progressService.logEvent('APP_FG', `boundary=${this.fgBoundaryTs},live=${this.lastLiveTimestamp}`);
-      this.flushLocationBuffer('resume');
+      // Count the background walk from the buffer BEFORE re-opening live ingest,
+      // so a watcher callback can't advance the dedup timestamp and make the
+      // flush skip real positions (the failure mode of the reverted #5 attempt).
+      // Then reset the distance anchor so the first live fix after resume doesn't
+      // count a straight-line jump from the pre-background point (phantom #7).
+      try {
+        await this.flushLocationBuffer('resume');
+      } finally {
+        this.progressService.resetDistanceAnchor();
+        this.isForeground = true;
+      }
     }).then(handle => {
       this.appResumeListener = handle;
     }).catch((err: unknown) => {
@@ -368,12 +382,6 @@ export class LocationService {
     this.position.set(pos);
 
     if (accuracy <= this.accuracyThreshold) {
-      // Path point is NOT added here — applyLocation() fires for every
-      // BackgroundGeolocation callback including background ones, which would
-      // draw straight-line jumps on the map. Path points are added by:
-      //   • addLivePathPoint() — called from the dashboard effect only for
-      //     positions that are actually counted (non-background-recovery)
-      //   • flushLocationBuffer() — adds buffer positions in order
       if (this.status() !== 'tracking') {
         this.status.set('tracking');
         const now = Date.now();
@@ -382,11 +390,34 @@ export class LocationService {
           console.log(`✅ GPS acquired! Accuracy: ${Math.round(accuracy)}m`);
         }
       }
+      // Ingest live positions ONLY in the foreground. applyLocation() fires for
+      // every BackgroundGeolocation callback, including background ones; counting
+      // those here would draw straight-line jumps AND double-count against the
+      // buffer flush. In the background the native buffer records positions and
+      // flushLocationBuffer() counts them on resume. The gate is opened only after
+      // each flush finishes (see startNativeWatching / resume), so a callback that
+      // races the flush is buffered and counted next time rather than ingested early.
+      if (this.isForeground) {
+        this.ingestLivePosition(pos);
+      }
     } else {
       if (this.status() !== 'low-accuracy') {
         this.status.set('low-accuracy');
       }
     }
+  }
+
+  /** Count one live foreground position: discover its tile / accrue distance,
+   *  advance the live dedup timestamp so the buffer flush skips it, and append
+   *  its path point. Called from the native watcher (foreground only, gated by
+   *  isForeground) and the web watcher (web has no background buffer, so it
+   *  always ingests). Background positions are never routed here — they are
+   *  counted exclusively by flushLocationBuffer(). */
+  private ingestLivePosition(pos: GeolocationPosition): void {
+    this.progressService.updatePosition(pos);
+    this.markLiveTimestamp(pos.timestamp);
+    this._walkedPath.push([pos.coords.latitude, pos.coords.longitude]);
+    this.walkedPathLength.update(n => n + 1);
   }
 
   // ── Web (браузер) ──────────────────────────────────────────────────────────
@@ -399,6 +430,9 @@ export class LocationService {
     }
 
     this.status.set('initializing');
+    // Web has no background buffer, so there is nothing to dedup against —
+    // ingest every live position directly. isForeground stays true for web.
+    this.isForeground = true;
     // No buffer flush on web — start warmup immediately so first live
     // positions with spurious GPS speed are not dropped.
     this.progressService.startGpsWarmup();
@@ -431,6 +465,7 @@ export class LocationService {
         this.position.set(pos);
         if (pos.coords.accuracy <= this.accuracyThreshold) {
           if (this.status() !== 'tracking') this.status.set('tracking');
+          this.ingestLivePosition(pos);
         } else {
           if (this.status() !== 'low-accuracy') this.status.set('low-accuracy');
         }
@@ -495,18 +530,12 @@ export class LocationService {
     return this._walkedPath;
   }
 
-  /** Called by DashboardComponent for each live position that is actually
-   *  counted (not a background-recovery jump). Keeps the visual path in sync
-   *  with what was actually counted, avoiding straight-line artifacts. */
-  addLivePathPoint(lat: number, lng: number): void {
-    this._walkedPath.push([lat, lng]);
-    this.walkedPathLength.update(n => n + 1);
-  }
-
-  // Called by DashboardComponent after updatePosition() is actually executed.
-  // Only advances when Angular effects are running — ensures buffer positions
-  // from "effects-dead" background periods get trackDistance = true on flush.
-  markLiveTimestamp(time: number): void {
+  // Advances the live dedup timestamp after a foreground position is counted, so
+  // flushLocationBuffer() skips buffer copies of positions already counted live.
+  // Called only from ingestLivePosition (foreground / web) — never in the
+  // background, which is what keeps the flush from treating the whole background
+  // walk as already-counted (the failure mode of the reverted #5 attempt).
+  private markLiveTimestamp(time: number): void {
     if (time > this.lastLiveTimestamp) {
       // Throttle log to once per minute — fires every few seconds during normal
       // walking and would crowd out important events in the session log.
@@ -518,10 +547,5 @@ export class LocationService {
       this.lastLiveTimestamp = time;
       localStorage.setItem(this.LIVE_TIMESTAMP_KEY, time.toString());
     }
-  }
-
-  hasGoodAccuracy(): boolean {
-    const pos = this.position();
-    return pos !== null && pos.coords.accuracy <= this.accuracyThreshold;
   }
 }

@@ -170,7 +170,7 @@ export class ProgressService {
     try { localStorage.setItem(this.POS_LOG_KEY, this._posLog.join('\n')); } catch {}
   }
 
-  // Generic event log entry (TRACKING_START, APP_RESUME, DASH_SKIP_*, etc.).
+  // Generic event log entry (TRACKING_START, APP_RESUME, APP_PAUSE, etc.).
   // extra = any short string appended to last column.
   logEvent(tag: string, extra = ''): void {
     this._flushStationary();
@@ -532,6 +532,17 @@ export class ProgressService {
     if (trackDistance) {
       this.lastPosition = pos;
     }
+  }
+
+  /** Drop the distance reference point so the next counted position starts a
+   *  fresh segment and cannot accrue distance from a stale anchor. Called after a
+   *  buffer flush (cold start / resume): the flush already advanced lastPosition
+   *  through the real path, and clearing it here guarantees the first live fix
+   *  after resume never counts a straight-line jump from a pre-background point
+   *  (the phantom-distance bug). Losing the tiny buffer-end → first-live segment
+   *  is negligible next to preventing a multi-hundred-metre phantom. */
+  resetDistanceAnchor(): void {
+    this.lastPosition = null;
   }
 
   unlockAchievement(achievementId: string): void {
