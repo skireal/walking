@@ -161,7 +161,7 @@ export class ProgressService {
     const lpLat = lastPos ? lastPos.coords.latitude.toFixed(5) : 'null';
     const lpLng = lastPos ? lastPos.coords.longitude.toFixed(5) : 'null';
     this._append(
-      `${posTs}|${lat.toFixed(5)}|${lng.toFixed(5)}|${f(gpsSpd)}|${lpLat}|${lpLng}|${f(distM)}|${f(dtSec)}|${f(effSpd)}|${action}|${totalM.toFixed(0)}`
+      `${posTs}|${lat.toFixed(5)}|${lng.toFixed(5)}|${f(gpsSpd)}|${lpLat}|${lpLng}|${f(distM)}|${f(dtSec)}|${f(effSpd)}|${action}|${totalM.toFixed(0)}|${f(this._curAccuracyM, 0)}`
     );
     if (this._posLog.length % 5 === 0) this._flushPosLog();
   }
@@ -213,7 +213,7 @@ export class ProgressService {
       `dailyDist=${Math.round(this.dailyDistanceMeters())}m entries=${this._posLog.length}`;
     // last column: total_m for COUNT/SKIP_* rows; accuracy_m for RAW_* rows
     return meta + '\n' +
-      'ts_ms|lat|lng|gps_spd_ms|lp_lat|lp_lng|dist_m|dt_sec|eff_spd_ms|action|total_m_or_accuracy_m\n' +
+      'ts_ms|lat|lng|gps_spd_ms|lp_lat|lp_lng|dist_m|dt_sec|eff_spd_ms|action|total_m_or_accuracy_m|acc_m\n' +
       this._posLog.join('\n');
   }
 
@@ -246,6 +246,12 @@ export class ProgressService {
   readonly syncError = this.syncErrorSignal.asReadonly();
   private saveTimeout: ReturnType<typeof setTimeout> | null = null;
   private lastPosition: GeolocationPosition | null = null;
+  // Accuracy (m) of the position currently being processed by updatePosition.
+  // Captured once per call and appended to every COUNT/SKIP_* log row so the
+  // session log shows how trustworthy each counted step was — needed to verify
+  // and tune the stationary-drift guard. logPos is only ever called from within
+  // updatePosition, so this is always fresh when a row is written.
+  private _curAccuracyM: number | null = null;
   // Becomes true once the FIRST Firestore snapshot for the current user has been
   // received (even an empty one for a new user). Until then we must not write to
   // Firestore: setDoc with merge:true replaces the visitedTiles array wholesale,
@@ -389,6 +395,8 @@ export class ProgressService {
     const lat = pos.coords.latitude;
     const lng = pos.coords.longitude;
     const newPoint: [number, number] = [lat, lng];
+    // Captured for the log rows written below (see _curAccuracyM).
+    this._curAccuracyM = pos.coords.accuracy ?? null;
 
     // Displacement from the last tracked point — computed UP FRONT so the speed
     // gate below can distinguish a real vehicle (vehicle-scale displacement)
@@ -470,6 +478,23 @@ export class ProgressService {
     if (trackDistance && distanceChange !== null) {
       if (distanceChange < MIN_DISTANCE_THRESHOLD_METERS) {
         this.logPos('SKIP_DIST', pos.timestamp, lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters());
+        return;
+      }
+
+      // Accuracy-aware drift guard. Two GPS fixes, each uncertain by their own
+      // reported accuracy, can look ~hypot(a1,a2) apart while the user stands
+      // still — worst indoors / under buildings where accuracy degrades toward
+      // the 50m acceptance ceiling. Counting that as distance inflated a
+      // stationary phone's daily total badly (a ~90-min stop added ~650m in
+      // field testing, +34%). Only count movement that clears the combined GPS
+      // noise floor. Like SKIP_DIST, lastPosition is NOT advanced, so genuine
+      // movement away from the anchor still accumulates and counts once it
+      // exceeds the noise. Tile discovery already happened above regardless.
+      const lastAcc = this.lastPosition!.coords.accuracy ?? 0;
+      const curAcc = pos.coords.accuracy ?? 0;
+      const noiseFloor = Math.hypot(curAcc, lastAcc);
+      if (distanceChange < noiseFloor) {
+        this.logPos('SKIP_DRIFT', pos.timestamp, lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters());
         return;
       }
 
