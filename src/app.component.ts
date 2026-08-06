@@ -50,5 +50,17 @@ export class AppComponent {
         this.showOnboarding.set(true);
       }
     });
+
+    // Tracking is tied to the logged-in session, not to the Dashboard component
+    // lifecycle. Start happens above (returning users) or in DashboardComponent
+    // on first map init (fresh logins). Stop happens here on logout — previously
+    // DashboardComponent.ngOnDestroy stopped it, which wrongly killed the native
+    // location buffer on every switch to the Profile tab. Guarded by isWatching()
+    // so the initial not-logged-in effect run doesn't emit a spurious stop.
+    effect(() => {
+      if (!this.isLoggedIn() && this.locationService.isWatching()) {
+        this.locationService.stopWatching();
+      }
+    });
   }
 }

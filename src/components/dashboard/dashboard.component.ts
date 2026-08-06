@@ -180,7 +180,12 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
-    this.locationService.stopWatching();
+    // Tracking is intentionally NOT stopped here. Navigating to the Profile tab
+    // destroys this component; stopping here also called LocationBuffer.stopBuffering(),
+    // so walking with the app on a non-map tab (or pocketed after switching tabs)
+    // recorded nothing — the native buffer, the very thing meant to survive
+    // backgrounding, was turned off. Tracking now lives for the whole logged-in
+    // session and is stopped on logout (see AppComponent).
     document.removeEventListener('visibilitychange', this.onVisibilityChange);
     // Tear down the Leaflet map so it releases the window-resize/DOM listeners
     // and animation timers it registers globally. Angular gives a fresh #map div
