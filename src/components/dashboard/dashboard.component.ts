@@ -72,13 +72,14 @@ export class DashboardComponent implements AfterViewInit, OnDestroy {
         if (i > 0) {
           const [prevLat, prevLng] = path[i - 1];
           const [curLat, curLng]   = path[i];
-          const dLat = curLat - prevLat;
-          const dLng = curLng - prevLng;
-          // Rough flat-earth distance (1° ≈ 111 km). Break the line if the jump
-          // exceeds 300 m — far more than normal GPS jitter, far less than a
-          // buffer-end → live-start gap of several kilometres.
-          const roughDistM = Math.sqrt(dLat * dLat + dLng * dLng) * 111_000;
-          if (roughDistM > 300) {
+          // Break the line exactly where the fog stops bridging: the same
+          // true-metre distance (Leaflet's distanceTo, not a flat-earth approx
+          // that overestimates east-west gaps) against the same MAX_INTERP_METERS
+          // cap. A gap the fog fills stays one connected line; a gap it leaves as
+          // a hole also breaks the line — so there is never cleared fog under a
+          // missing line, nor a line drawn over un-opened dark fog.
+          const gapM = L.latLng([prevLat, prevLng]).distanceTo(L.latLng([curLat, curLng]));
+          if (gapM > this.progressService.MAX_INTERP_METERS) {
             const newLine = L.polyline([], {
               color: '#f97316', weight: 3, opacity: 0.85,
               lineJoin: 'round', lineCap: 'round',

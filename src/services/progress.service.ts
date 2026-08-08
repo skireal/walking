@@ -85,8 +85,17 @@ export class ProgressService {
   // Largest gap between two accepted fixes that we still bridge by opening the
   // tiles along the straight line between them. Beyond this the straight line is
   // no longer a trustworthy stand-in for the walked route (long GPS dropout, or a
-  // vehicle/teleport jump), so only the endpoints open.
-  private readonly MAX_INTERP_METERS = 500;
+  // vehicle/teleport jump), so only the endpoints open. Public so the dashboard's
+  // path polyline breaks at the same distance the fog stops bridging (keeps the
+  // orange line and the cleared fog consistent).
+  public readonly MAX_INTERP_METERS = 500;
+  // Longest time gap between two accepted fixes that we still bridge. The
+  // effective-speed cap alone cannot catch a long GPS outage: a large dt makes
+  // the average speed look walking-slow even across kilometres, so two real fixes
+  // bracketing an hours-long no-signal period would otherwise be bridged. Real
+  // walking dropouts (tunnels, under cover) are minutes, not hours — beyond this
+  // we don't trust a straight line, so only the endpoints open.
+  private readonly MAX_INTERP_SECONDS = 300;
 
   // ── Debug position log ────────────────────────────────────────────────────
   // Captures every incoming position with the reason it was counted or skipped.
@@ -475,7 +484,7 @@ export class ProgressService {
     // 60-80m — larger than one 55m tile — and dropouts (tunnels, under buildings)
     // leave gaps of 100-300m. Opening only the landing tile left holes along the
     // route the user actually walked; bridging the segment fills them.
-    const stepTileIds = this.collectStepTileIds(lat, lng, distanceChange, effectiveSpeed);
+    const stepTileIds = this.collectStepTileIds(lat, lng, distanceChange, timeDeltaSec, effectiveSpeed);
     const visitedNow = this.visitedTiles();
     const newTileIds = stepTileIds.filter(id => !visitedNow.has(id));
     if (newTileIds.length > 0) {
@@ -607,12 +616,14 @@ export class ProgressService {
    *  ~15-50s while backgrounded (60-80m walking steps) and GPS drops out under
    *  cover (100-300m gaps), so opening only the landing tile left holes along
    *  the walked route. The segment is bridged only when it is walking-plausible
-   *  (effective speed ≤ MAX_SPEED_MS) and bounded (≤ MAX_INTERP_METERS), so we
-   *  never paint tiles across a vehicle jump, a long dropout, or a teleport. */
+   *  (effective speed ≤ MAX_SPEED_MS), distance-bounded (≤ MAX_INTERP_METERS) and
+   *  time-bounded (≤ MAX_INTERP_SECONDS), so we never paint tiles across a vehicle
+   *  jump, a long GPS outage, or a teleport. */
   private collectStepTileIds(
     lat: number,
     lng: number,
     distanceChange: number | null,
+    timeDeltaSec: number | null,
     effectiveSpeed: number | null,
   ): string[] {
     const currentId = this.getTileIdForLatLng(lat, lng);
@@ -621,6 +632,8 @@ export class ProgressService {
       distanceChange !== null &&
       distanceChange > this.TILE_SIZE_METERS_APPROX &&
       distanceChange <= this.MAX_INTERP_METERS &&
+      timeDeltaSec !== null &&
+      timeDeltaSec <= this.MAX_INTERP_SECONDS &&
       effectiveSpeed !== null &&
       effectiveSpeed <= MAX_SPEED_MS;
     if (!canBridge) return [currentId];
