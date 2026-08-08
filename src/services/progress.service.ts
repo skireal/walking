@@ -72,6 +72,15 @@ export class ProgressService {
   });
 
   public readonly TILE_SIZE_DEGREES_LAT = 0.0005;
+  // Approximate tile edge length in metres (0.0005° lat ≈ 55.7m). Used to decide
+  // when two consecutive fixes span more than one tile and to size the
+  // interpolation step so no tile between them is skipped.
+  private readonly TILE_SIZE_METERS_APPROX = this.TILE_SIZE_DEGREES_LAT * 111_320;
+  // Largest gap between two accepted fixes that we still bridge by opening the
+  // tiles along the straight line between them. Beyond this the straight line is
+  // no longer a trustworthy stand-in for the walked route (long GPS dropout, or a
+  // vehicle/teleport jump), so only the endpoints open.
+  private readonly MAX_INTERP_METERS = 500;
 
   // ── Debug position log ────────────────────────────────────────────────────
   // Captures every incoming position with the reason it was counted or skipped.
@@ -454,22 +463,30 @@ export class ProgressService {
     // the previous counted position. Skipping tile discovery on SKIP_DIST
     // caused gaps: positions inside the threshold radius were discarded
     // before reaching the tile check, leaving intermediate tiles unopened.
-    const currentTileId = this.getTileIdForLatLng(lat, lng);
-    if (!this.visitedTiles().has(currentTileId)) {
+    // Tiles for this step: the current tile PLUS any tiles along the straight
+    // segment from the previous accepted position (see collectStepTileIds). GPS
+    // delivers a fix every ~15-50s while backgrounded, so a walking step is often
+    // 60-80m — larger than one 55m tile — and dropouts (tunnels, under buildings)
+    // leave gaps of 100-300m. Opening only the landing tile left holes along the
+    // route the user actually walked; bridging the segment fills them.
+    const stepTileIds = this.collectStepTileIds(lat, lng, distanceChange, effectiveSpeed);
+    const visitedNow = this.visitedTiles();
+    const newTileIds = stepTileIds.filter(id => !visitedNow.has(id));
+    if (newTileIds.length > 0) {
       this.visitedTiles.update(tiles => {
         const newTiles = new Set(tiles);
-        newTiles.add(currentTileId);
+        for (const id of newTileIds) newTiles.add(id);
         return newTiles;
       });
       if (countDailyStats) {
         this.dailyTileIds.update(tiles => {
           const newTiles = new Set(tiles);
-          newTiles.add(currentTileId);
+          for (const id of newTileIds) newTiles.add(id);
           return newTiles;
         });
         this.lastSavedDistanceMeters = this.dailyDistanceMeters();
       }
-      console.log(`🟩 [Progress] new tile: ${currentTileId} (total: ${this.visitedTiles().size}, today: ${this.dailyTileIds().size})`);
+      console.log(`🟩 [Progress] ${newTileIds.length} new tile(s) (total: ${this.visitedTiles().size}, today: ${this.dailyTileIds().size})`);
       this.saveToLocalStorage();
       this.saveProgress();
     }
@@ -569,6 +586,44 @@ export class ProgressService {
     const tileSizeLng = this.getTileLngSizeAtLat(representativeLat);
     const tileX = Math.floor(lng / tileSizeLng);
     return `${tileX},${tileY}`;
+  }
+
+  /** Tile IDs the user occupied for the current position: always its own tile,
+   *  plus the tiles along the straight segment from the previous accepted
+   *  position when that gap spans more than one tile. Fixes arrive every
+   *  ~15-50s while backgrounded (60-80m walking steps) and GPS drops out under
+   *  cover (100-300m gaps), so opening only the landing tile left holes along
+   *  the walked route. The segment is bridged only when it is walking-plausible
+   *  (effective speed ≤ MAX_SPEED_MS) and bounded (≤ MAX_INTERP_METERS), so we
+   *  never paint tiles across a vehicle jump, a long dropout, or a teleport. */
+  private collectStepTileIds(
+    lat: number,
+    lng: number,
+    distanceChange: number | null,
+    effectiveSpeed: number | null,
+  ): string[] {
+    const currentId = this.getTileIdForLatLng(lat, lng);
+    const canBridge =
+      this.lastPosition !== null &&
+      distanceChange !== null &&
+      distanceChange > this.TILE_SIZE_METERS_APPROX &&
+      distanceChange <= this.MAX_INTERP_METERS &&
+      effectiveSpeed !== null &&
+      effectiveSpeed <= MAX_SPEED_MS;
+    if (!canBridge) return [currentId];
+
+    const lat1 = this.lastPosition!.coords.latitude;
+    const lng1 = this.lastPosition!.coords.longitude;
+    // Step half a tile so no tile the segment crosses is skipped. Cap the step
+    // count as a guard against a pathological distance.
+    const steps = Math.min(64, Math.ceil(distanceChange! / (this.TILE_SIZE_METERS_APPROX / 2)));
+    const ids = new Set<string>();
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps;
+      ids.add(this.getTileIdForLatLng(lat1 + (lat - lat1) * t, lng1 + (lng - lng1) * t));
+    }
+    ids.add(currentId);
+    return Array.from(ids);
   }
 
   private applyDailyProgress(daily: DailyProgress | undefined): void {
