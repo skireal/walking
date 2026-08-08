@@ -16,6 +16,12 @@ declare var L: LeafletStatic | undefined;
 const STORAGE_KEY_PREFIX = 'walker_progress_data_v3_';
 const MIN_DISTANCE_THRESHOLD_METERS = 15; // Filters GPS drift while stationary
 const MAX_SPEED_MS = 5; // ~18 km/h — walking/running only
+// Below this average speed (m/s) over the interval the user is treated as
+// standing still, so a within-noise displacement counts as drift. ~0.3 m/s is
+// ~1 km/h — well under any real walking pace (a slow stroll is ~0.6-0.8 m/s), so
+// genuine walking steps are never mistaken for drift even when GPS accuracy is
+// mediocre and the step is smaller than the accuracy noise floor.
+const DRIFT_MAX_SPEED_MS = 0.3;
 const DAILY_DISTANCE_SAVE_INTERVAL_METERS = 50; // Save distance every 50m even without new tiles
 
 interface DailyProgress {
@@ -507,10 +513,17 @@ export class ProgressService {
       // noise floor. Like SKIP_DIST, lastPosition is NOT advanced, so genuine
       // movement away from the anchor still accumulates and counts once it
       // exceeds the noise. Tile discovery already happened above regardless.
+      // Only a within-noise displacement that is ALSO stationary-slow counts as
+      // drift. Real walking fixes land ~15-25m apart, which can be under the
+      // accuracy noise floor when GPS is mediocre (10-30m) — gating on effective
+      // speed keeps those real steps (eff ~0.6-2.5 m/s) counted while still
+      // dropping true standing-still drift (eff ~0.01-0.2 m/s). Without the speed
+      // gate the noise-floor check alone rejected genuine walking steps.
       const lastAcc = this.lastPosition!.coords.accuracy ?? 0;
       const curAcc = pos.coords.accuracy ?? 0;
       const noiseFloor = Math.hypot(curAcc, lastAcc);
-      if (distanceChange < noiseFloor) {
+      const stationarySpeed = effectiveSpeed !== null && effectiveSpeed < DRIFT_MAX_SPEED_MS;
+      if (distanceChange < noiseFloor && stationarySpeed) {
         this.logPos('SKIP_DRIFT', pos.timestamp, lat, lng, speed, this.lastPosition, distanceChange, timeDeltaSec, effectiveSpeed, this.dailyDistanceMeters());
         return;
       }
